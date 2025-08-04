@@ -1,0 +1,75 @@
+{
+  "name": "zero-trust-infrastructure-scanner",
+  "version": "1.0.0",
+  "description": "Enterprise-grade Zero-Trust Infrastructure Scanner for network micro-segmentation, identity permission mining, supply chain security, and compliance automation",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node src/index.ts",
+    "start": "node dist/index.js",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "lint": "eslint src/**/*.ts",
+    "lint:fix": "eslint src/**/*.ts --fix",
+    "clean": "rm -rf dist",
+    "prebuild": "npm run clean",
+    "scan": "ts-node src/cli.ts",
+    "scan:network": "ts-node src/cli.ts network",
+    "scan:identity": "ts-node src/cli.ts identity",
+    "scan:supply-chain": "ts-node src/cli.ts supply-chain",
+    "scan:compliance": "ts-node src/cli.ts compliance"
+  },
+  "keywords": [
+    "zero-trust",
+    "security",
+    "infrastructure",
+    "scanner",
+    "compliance",
+    "network-security",
+    "identity-management",
+    "supply-chain",
+    "devops",
+    "security-automation"
+  ],
+  "author": "sirhCC",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^11.0.0",
+    "chalk": "^4.1.2",
+    "inquirer": "^8.2.5",
+    "ora": "^5.4.1",
+    "dotenv": "^16.3.1",
+    "yaml": "^2.3.2",
+    "joi": "^17.9.2",
+    "axios": "^1.4.0",
+    "winston": "^3.10.0",
+    "node-cron": "^3.0.2",
+    "jsonwebtoken": "^9.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.4.5",
+    "@types/jest": "^29.5.3",
+    "@types/inquirer": "^9.0.3",
+    "@types/jsonwebtoken": "^9.0.2",
+    "typescript": "^5.1.6",
+    "ts-node": "^10.9.1",
+    "jest": "^29.6.2",
+    "ts-jest": "^29.1.1",
+    "@typescript-eslint/eslint-plugin": "^6.2.1",
+    "@typescript-eslint/parser": "^6.2.1",
+    "eslint": "^8.46.0",
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sirhCC/Zero-Trust-Infrastructure-Scanner.git"
+  },
+  "bugs": {
+    "url": "https://github.com/sirhCC/Zero-Trust-Infrastructure-Scanner/issues"
+  },
+  "homepage": "https://github.com/sirhCC/Zero-Trust-Infrastructure-Scanner#readme"
+}
