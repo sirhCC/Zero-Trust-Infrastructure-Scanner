@@ -685,7 +685,7 @@ program
         let criticalCount = 0;
         
         function connect() {
-            ws = new WebSocket('ws://localhost:${options.monitorPort}');
+            ws = new WebSocket('ws://localhost:${options.monitorPort}/ws');
             
             ws.onopen = function() {
                 document.getElementById('connection-status').className = 'connection-status connected';
