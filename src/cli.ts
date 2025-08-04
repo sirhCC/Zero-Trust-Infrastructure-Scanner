@@ -39,8 +39,59 @@ program
     console.log(chalk.blue('🔍 Network Micro-Segmentation Analysis'));
     console.log(chalk.gray('Target:'), options.target || 'Auto-detect');
     
-    // TODO: Implement network scanning
-    console.log(chalk.yellow('⚠️  Network scanning module coming soon...'));
+    try {
+      // Import and initialize scanner
+      const { ZeroTrustScanner } = await import('./core/scanner');
+      const scanner = new ZeroTrustScanner();
+      await scanner.initialize();
+      
+      // Prepare scan target
+      const target = {
+        type: 'network' as const,
+        target: options.target || 'auto-detect',
+        options: {
+          cloud_provider: options.cloudProvider,
+          scan_depth: parseInt(options.scanDepth) || 3,
+          k8s_namespace: options.k8sNamespace,
+          policy_file: options.policyFile
+        }
+      };
+      
+      console.log(chalk.yellow('🚀 Starting network scan...'));
+      const result = await scanner.scan(target);
+      
+      // Display results
+      console.log(chalk.green(`✅ Scan completed in ${result.duration}ms`));
+      console.log(chalk.gray(`Scan ID: ${result.id}`));
+      console.log(chalk.gray(`Findings: ${result.findings.length}`));
+      
+      // Display findings summary
+      if (result.findings.length > 0) {
+        console.log('\n' + chalk.bold('Security Findings:'));
+        result.findings.forEach((finding, index) => {
+          const severityColor = {
+            critical: chalk.red,
+            high: chalk.redBright,
+            medium: chalk.yellow,
+            low: chalk.blue,
+            info: chalk.gray
+          }[finding.severity];
+          
+          console.log(`${index + 1}. ${severityColor(finding.severity.toUpperCase())} - ${finding.title}`);
+          console.log(`   ${finding.description}`);
+          if (finding.recommendation) {
+            console.log(`   💡 ${chalk.cyan('Recommendation:')} ${finding.recommendation}`);
+          }
+          console.log('');
+        });
+      } else {
+        console.log(chalk.green('\n✅ No security issues found!'));
+      }
+      
+    } catch (error) {
+      console.error(chalk.red('❌ Network scan failed:'), error instanceof Error ? error.message : error);
+      process.exit(1);
+    }
   });
 
 /**
