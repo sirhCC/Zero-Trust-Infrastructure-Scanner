@@ -109,8 +109,79 @@ program
     console.log(chalk.blue('🔍 Identity Permission Mining'));
     console.log(chalk.gray('Provider:'), options.provider || 'Auto-detect');
     
-    // TODO: Implement identity scanning
-    console.log(chalk.yellow('⚠️  Identity scanning module coming soon...'));
+    try {
+      // Import and initialize scanner
+      const { ZeroTrustScanner } = await import('./core/scanner');
+      const scanner = new ZeroTrustScanner();
+      await scanner.initialize();
+      
+      // Prepare scan target
+      const target = {
+        type: 'identity' as const,
+        target: options.provider || 'auto-detect',
+        options: {
+          provider: options.provider,
+          user: options.user,
+          role: options.role,
+          include_service_accounts: options.includeServiceAccounts,
+          privilege_threshold: options.privilegeThreshold || 'medium',
+          check_unused_accounts: true,
+          analyze_policies: true,
+          days_inactive_threshold: 90
+        }
+      };
+      
+      console.log(chalk.yellow('🚀 Starting identity scan...'));
+      const result = await scanner.scan(target);
+      
+      // Display results
+      console.log(chalk.green(`✅ Scan completed in ${result.duration}ms`));
+      console.log(chalk.gray(`Scan ID: ${result.id}`));
+      console.log(chalk.gray(`Findings: ${result.findings.length}`));
+      
+      // Display findings summary
+      if (result.findings.length > 0) {
+        console.log('\n' + chalk.bold('Identity Security Findings:'));
+        
+        // Group findings by severity
+        const findingsBySeverity = {
+          critical: result.findings.filter(f => f.severity === 'critical'),
+          high: result.findings.filter(f => f.severity === 'high'),
+          medium: result.findings.filter(f => f.severity === 'medium'),
+          low: result.findings.filter(f => f.severity === 'low'),
+          info: result.findings.filter(f => f.severity === 'info')
+        };
+        
+        // Display critical findings first
+        Object.entries(findingsBySeverity).forEach(([severity, findings]) => {
+          if (findings.length > 0) {
+            const severityColor = {
+              critical: chalk.red,
+              high: chalk.redBright,
+              medium: chalk.yellow,
+              low: chalk.blue,
+              info: chalk.gray
+            }[severity as keyof typeof findingsBySeverity];
+            
+            console.log(`\n${severityColor(`${severity.toUpperCase()} (${findings.length})`)}`);
+            findings.forEach((finding, index) => {
+              console.log(`${index + 1}. ${finding.title}`);
+              console.log(`   ${finding.description}`);
+              if (finding.recommendation) {
+                console.log(`   💡 ${chalk.cyan('Recommendation:')} ${finding.recommendation}`);
+              }
+              console.log('');
+            });
+          }
+        });
+      } else {
+        console.log(chalk.green('\n✅ No identity security issues found!'));
+      }
+      
+    } catch (error) {
+      console.error(chalk.red('❌ Identity scan failed:'), error instanceof Error ? error.message : error);
+      process.exit(1);
+    }
   });
 
 /**
