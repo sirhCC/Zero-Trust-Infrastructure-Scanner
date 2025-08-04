@@ -12,7 +12,7 @@
     "test:coverage": "jest --coverage",
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix",
-    "clean": "rm -rf dist",
+    "clean": "if exist dist rmdir /s /q dist",
     "prebuild": "npm run clean",
     "scan": "ts-node src/cli.ts",
     "scan:network": "ts-node src/cli.ts network",
