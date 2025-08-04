@@ -200,8 +200,103 @@ program
     console.log(chalk.blue('🔍 Supply Chain Security Analysis'));
     console.log(chalk.gray('Target:'), options.image || options.file || 'Current directory');
     
-    // TODO: Implement supply chain scanning
-    console.log(chalk.yellow('⚠️  Supply chain scanning module coming soon...'));
+    try {
+      // Import and initialize scanner
+      const { ZeroTrustScanner } = await import('./core/scanner');
+      const scanner = new ZeroTrustScanner();
+      await scanner.initialize();
+      
+      // Prepare scan target
+      const target = {
+        type: 'supply-chain' as const,
+        target: options.image || options.file || 'current-directory',
+        options: {
+          image: options.image,
+          file: options.file,
+          registry: options.registry,
+          severity: options.severity || 'medium',
+          include_dev_deps: options.includeDevDeps,
+          check_licenses: true,
+          generate_sbom: false,
+          ignore_unfixed: false,
+          scan_depth: 3
+        }
+      };
+      
+      console.log(chalk.yellow('🚀 Starting supply chain scan...'));
+      const result = await scanner.scan(target);
+      
+      // Display results
+      console.log(chalk.green(`✅ Scan completed in ${result.duration}ms`));
+      console.log(chalk.gray(`Scan ID: ${result.id}`));
+      console.log(chalk.gray(`Findings: ${result.findings.length}`));
+      
+      // Display findings summary
+      if (result.findings.length > 0) {
+        console.log('\n' + chalk.bold('Supply Chain Security Findings:'));
+        
+        // Group findings by severity
+        const findingsBySeverity = {
+          critical: result.findings.filter(f => f.severity === 'critical'),
+          high: result.findings.filter(f => f.severity === 'high'),
+          medium: result.findings.filter(f => f.severity === 'medium'),
+          low: result.findings.filter(f => f.severity === 'low'),
+          info: result.findings.filter(f => f.severity === 'info')
+        };
+        
+        // Display critical findings first
+        Object.entries(findingsBySeverity).forEach(([severity, findings]) => {
+          if (findings.length > 0) {
+            const severityColor = {
+              critical: chalk.red,
+              high: chalk.redBright,
+              medium: chalk.yellow,
+              low: chalk.blue,
+              info: chalk.gray
+            }[severity as keyof typeof findingsBySeverity];
+            
+            console.log(`\n${severityColor(`${severity.toUpperCase()} (${findings.length})`)}`);
+            findings.forEach((finding, index) => {
+              console.log(`${index + 1}. ${finding.title}`);
+              console.log(`   ${finding.description}`);
+              if (finding.recommendation) {
+                console.log(`   💡 ${chalk.cyan('Recommendation:')} ${finding.recommendation}`);
+              }
+              
+              // Show CVE information for vulnerabilities
+              if (finding.category.includes('cve') || finding.description.includes('CVE-')) {
+                console.log(`   🔗 ${chalk.magenta('Security Advisory')} - Check CVE database for details`);
+              }
+              console.log('');
+            });
+          }
+        });
+        
+        // Display summary statistics
+        const criticalCount = findingsBySeverity.critical.length;
+        const highCount = findingsBySeverity.high.length;
+        const totalVulns = criticalCount + highCount + findingsBySeverity.medium.length;
+        
+        if (totalVulns > 0) {
+          console.log(chalk.bold('\n📊 Vulnerability Summary:'));
+          console.log(`   ${chalk.red('Critical:')} ${criticalCount}`);
+          console.log(`   ${chalk.redBright('High:')} ${highCount}`);
+          console.log(`   ${chalk.yellow('Medium:')} ${findingsBySeverity.medium.length}`);
+          console.log(`   ${chalk.blue('Low:')} ${findingsBySeverity.low.length}`);
+          
+          if (criticalCount > 0) {
+            console.log(chalk.red('\n⚠️  CRITICAL vulnerabilities found - immediate action required!'));
+          }
+        }
+        
+      } else {
+        console.log(chalk.green('\n✅ No supply chain security issues found!'));
+      }
+      
+    } catch (error) {
+      console.error(chalk.red('❌ Supply chain scan failed:'), error instanceof Error ? error.message : error);
+      process.exit(1);
+    }
   });
 
 /**
@@ -218,8 +313,115 @@ program
     console.log(chalk.blue('🔍 Compliance Automation'));
     console.log(chalk.gray('Standards:'), options.standard);
     
-    // TODO: Implement compliance scanning
-    console.log(chalk.yellow('⚠️  Compliance scanning module coming soon...'));
+    try {
+      // Import and initialize scanner
+      const { ZeroTrustScanner } = await import('./core/scanner');
+      const scanner = new ZeroTrustScanner();
+      await scanner.initialize();
+      
+      // Prepare scan target
+      const target = {
+        type: 'compliance' as const,
+        target: options.environment || 'current-environment',
+        options: {
+          frameworks: options.standard === 'all' ? undefined : [{ name: options.standard.toUpperCase() }],
+          scope: options.excludeControls ? 
+            undefined : // If exclusions specified, we'd need to process them
+            undefined,
+          evidence_collection: true,
+          auto_remediation: false,
+          report_format: options.reportFormat || 'json',
+          include_recommendations: true,
+          severity_threshold: 'medium',
+          custom_rules: []
+        }
+      };
+      
+      console.log(chalk.yellow('🚀 Starting compliance scan...'));
+      const result = await scanner.scan(target);
+      
+      // Display results
+      console.log(chalk.green(`✅ Scan completed in ${result.duration}ms`));
+      console.log(chalk.gray(`Scan ID: ${result.id}`));
+      console.log(chalk.gray(`Findings: ${result.findings.length}`));
+      
+      // Display findings summary
+      if (result.findings.length > 0) {
+        console.log('\n' + chalk.bold('Compliance Findings:'));
+        
+        // Group findings by severity
+        const findingsBySeverity = {
+          critical: result.findings.filter(f => f.severity === 'critical'),
+          high: result.findings.filter(f => f.severity === 'high'),
+          medium: result.findings.filter(f => f.severity === 'medium'),
+          low: result.findings.filter(f => f.severity === 'low'),
+          info: result.findings.filter(f => f.severity === 'info')
+        };
+        
+        // Display critical findings first
+        Object.entries(findingsBySeverity).forEach(([severity, findings]) => {
+          if (findings.length > 0) {
+            const severityColor = {
+              critical: chalk.red,
+              high: chalk.redBright,
+              medium: chalk.yellow,
+              low: chalk.blue,
+              info: chalk.gray
+            }[severity as keyof typeof findingsBySeverity];
+            
+            console.log(`\n${severityColor(`${severity.toUpperCase()} (${findings.length})`)}`);
+            findings.forEach((finding, index) => {
+              console.log(`${index + 1}. ${finding.title}`);
+              console.log(`   ${finding.description}`);
+              if (finding.recommendation) {
+                console.log(`   💡 ${chalk.cyan('Recommendation:')} ${finding.recommendation}`);
+              }
+              
+              // Show compliance framework information
+              if (finding.compliance_impact && finding.compliance_impact.length > 0) {
+                finding.compliance_impact.forEach(impact => {
+                  console.log(`   📋 ${chalk.magenta(impact.standard)} Control: ${impact.control} (${impact.impact} impact)`);
+                });
+              }
+              console.log('');
+            });
+          }
+        });
+        
+        // Display compliance summary
+        const criticalCount = findingsBySeverity.critical.length;
+        const highCount = findingsBySeverity.high.length;
+        const totalIssues = criticalCount + highCount + findingsBySeverity.medium.length;
+        
+        console.log(chalk.bold('\n📊 Compliance Summary:'));
+        console.log(`   ${chalk.red('Critical:')} ${criticalCount}`);
+        console.log(`   ${chalk.redBright('High:')} ${highCount}`);
+        console.log(`   ${chalk.yellow('Medium:')} ${findingsBySeverity.medium.length}`);
+        console.log(`   ${chalk.blue('Low:')} ${findingsBySeverity.low.length}`);
+        
+        // Calculate compliance score (rough estimate)
+        const totalChecks = result.metrics.total_checks || 25;
+        const failedChecks = totalIssues;
+        const complianceScore = Math.max(0, Math.round(((totalChecks - failedChecks) / totalChecks) * 100));
+        
+        console.log(`\n📈 ${chalk.bold('Compliance Score:')} ${complianceScore}%`);
+        
+        if (criticalCount > 0) {
+          console.log(chalk.red('\n🚨 CRITICAL compliance issues found - immediate remediation required!'));
+        } else if (highCount > 0) {
+          console.log(chalk.yellow('\n⚠️  HIGH severity compliance issues found - prioritize remediation'));
+        } else {
+          console.log(chalk.green('\n✅ No critical compliance issues found'));
+        }
+        
+      } else {
+        console.log(chalk.green('\n✅ No compliance issues found! 🎉'));
+      }
+      
+    } catch (error) {
+      console.error(chalk.red('❌ Compliance scan failed:'), error instanceof Error ? error.message : error);
+      process.exit(1);
+    }
   });
 
 /**
