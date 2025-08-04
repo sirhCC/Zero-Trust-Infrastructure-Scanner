@@ -448,6 +448,347 @@ program
   });
 
 /**
+ * Real-Time Monitoring Commands
+ */
+program
+  .command('monitor')
+  .description('Real-time continuous security monitoring')
+  .option('-p, --port <port>', 'WebSocket server port', '3001')
+  .option('-i, --interval <seconds>', 'Monitoring interval in seconds', '30')
+  .option('-t, --targets <targets>', 'Comma-separated list of targets to monitor')
+  .option('--webhooks <urls>', 'Comma-separated webhook URLs for alerts')
+  .option('--slack-webhook <url>', 'Slack webhook URL for notifications')
+  .option('--teams-webhook <url>', 'Microsoft Teams webhook URL')
+  .option('--email-alerts <emails>', 'Comma-separated email addresses for alerts')
+  .action(async (options) => {
+    console.log(chalk.blue('📡 Starting Real-Time Security Monitoring'));
+    console.log(chalk.gray('WebSocket Port:'), options.port);
+    console.log(chalk.gray('Scan Interval:'), `${options.interval}s`);
+    
+    try {
+      // Import and initialize real-time monitor
+      const { RealTimeMonitor } = await import('./monitoring/real-time-monitor');
+      
+      // Parse targets
+      const targets = options.targets 
+        ? options.targets.split(',').map((t: string) => t.trim())
+        : ['localhost'];
+      
+      // Parse webhook URLs
+      const webhooks = options.webhooks 
+        ? options.webhooks.split(',').map((w: string) => w.trim())
+        : [];
+      
+      // Parse email addresses
+      const emailAlerts = options.emailAlerts 
+        ? options.emailAlerts.split(',').map((e: string) => e.trim())
+        : [];
+      
+      // Configure monitoring
+      const monitorConfig = {
+        scan_interval: parseInt(options.interval) * 1000, // Convert to milliseconds
+        targets: targets.map((target: string) => ({
+          id: `target-${target}`,
+          name: target,
+          scan_target: {
+            type: 'network' as const,
+            target: target,
+            options: {
+              cloud_provider: null,
+              k8s_namespace: null,
+              policy_file: null,
+              scan_depth: 3
+            }
+          },
+          priority: 'medium' as const,
+          enabled: true
+        })),
+        alerting: {
+          enabled: true,
+          channels: [
+            ...webhooks.map((url: string) => ({
+              type: 'webhook' as const,
+              config: { url },
+              enabled: true
+            })),
+            ...(options.slackWebhook ? [{
+              type: 'slack' as const,
+              config: { webhook_url: options.slackWebhook },
+              enabled: true
+            }] : []),
+            ...(options.teamsWebhook ? [{
+              type: 'teams' as const,
+              config: { webhook_url: options.teamsWebhook },
+              enabled: true
+            }] : []),
+            ...(emailAlerts.length > 0 ? [{
+              type: 'email' as const,
+              config: {
+                recipients: emailAlerts,
+                smtp: {
+                  host: 'localhost',
+                  port: 587,
+                  secure: false,
+                  auth: { user: '', pass: '' }
+                }
+              },
+              enabled: true
+            }] : [])
+          ],
+          severity_threshold: 'medium' as const,
+          rate_limiting: {
+            max_alerts_per_minute: 5,
+            cooldown_period: 300 // 5 minutes
+          }
+        },
+        websocket: {
+          port: parseInt(options.port),
+          path: '/ws',
+          authentication: false,
+          max_connections: 100
+        },
+        change_detection: {
+          enabled: true,
+          delta_threshold: 10, // 10% change threshold
+          baseline_update_frequency: 24, // 24 hours
+          ignore_transient_changes: true
+        }
+      };
+      
+      // Initialize and start monitor
+      const monitor = new RealTimeMonitor(monitorConfig);
+      
+      console.log(chalk.green('✅ Real-time monitor initialized'));
+      console.log(chalk.yellow('🔄 Starting continuous monitoring...'));
+      
+      await monitor.start();
+      
+      console.log(chalk.green('🚀 Monitoring active!'));
+      console.log(chalk.blue(`📡 WebSocket server listening on port ${options.port}`));
+      console.log(chalk.gray('📊 Connect to the dashboard at:'), chalk.cyan(`ws://localhost:${options.port}`));
+      console.log(chalk.gray('⚡ Monitoring targets:'), targets.join(', '));
+      console.log(chalk.yellow('🛑 Press Ctrl+C to stop monitoring'));
+      
+      // Handle graceful shutdown
+      const shutdown = async () => {
+        console.log(chalk.yellow('\n🛑 Shutting down monitor...'));
+        await monitor.stop();
+        console.log(chalk.green('✅ Monitor stopped gracefully'));
+        process.exit(0);
+      };
+      
+      process.on('SIGINT', shutdown);
+      process.on('SIGTERM', shutdown);
+      
+      // Keep process alive
+      setInterval(() => {
+        // Heartbeat to keep process running
+      }, 1000);
+      
+    } catch (error: any) {
+      console.error(chalk.red('❌ Monitor startup failed:'), error.message);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('dashboard')
+  .description('Launch web dashboard for real-time monitoring')
+  .option('-p, --port <port>', 'Dashboard port', '3000')
+  .option('--monitor-port <port>', 'WebSocket monitor port to connect to', '3001')
+  .action(async (options) => {
+    console.log(chalk.blue('🌐 Starting Web Dashboard'));
+    console.log(chalk.gray('Dashboard Port:'), options.port);
+    console.log(chalk.gray('Monitor Port:'), options.monitorPort);
+    
+    try {
+      // Simple HTTP server for dashboard
+      const http = require('http');
+      
+      const dashboardHtml = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zero-Trust Scanner - Live Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0f172a; color: #e2e8f0; }
+        .header { background: #1e293b; padding: 1rem; border-bottom: 2px solid #334155; }
+        .header h1 { color: #3b82f6; font-size: 1.5rem; }
+        .header .status { color: #10b981; font-size: 0.9rem; margin-top: 0.5rem; }
+        .main { padding: 2rem; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; }
+        .card { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 1.5rem; }
+        .card h3 { color: #60a5fa; margin-bottom: 1rem; }
+        .metric { display: flex; justify-content: space-between; margin-bottom: 0.5rem; }
+        .metric-value { font-weight: bold; color: #10b981; }
+        .events { max-height: 400px; overflow-y: auto; }
+        .event { background: #374151; padding: 0.75rem; margin-bottom: 0.5rem; border-radius: 4px; font-size: 0.85rem; }
+        .event.critical { border-left: 4px solid #ef4444; }
+        .event.warning { border-left: 4px solid #f59e0b; }
+        .event.info { border-left: 4px solid #3b82f6; }
+        .timestamp { color: #9ca3af; font-size: 0.75rem; }
+        .connection-status { padding: 0.5rem 1rem; border-radius: 4px; font-size: 0.9rem; margin-bottom: 1rem; }
+        .connected { background: #065f46; color: #d1fae5; }
+        .disconnected { background: #7f1d1d; color: #fed7d7; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🛡️ Zero-Trust Infrastructure Scanner - Live Dashboard</h1>
+        <div class="status" id="status">Connecting to monitor...</div>
+    </div>
+    
+    <div class="main">
+        <div id="connection-status" class="connection-status disconnected">
+            📡 Connecting to WebSocket monitor...
+        </div>
+        
+        <div class="grid">
+            <div class="card">
+                <h3>📊 Monitoring Overview</h3>
+                <div class="metric">
+                    <span>Targets Monitored:</span>
+                    <span class="metric-value" id="target-count">0</span>
+                </div>
+                <div class="metric">
+                    <span>Active Scans:</span>
+                    <span class="metric-value" id="active-scans">0</span>
+                </div>
+                <div class="metric">
+                    <span>Total Events:</span>
+                    <span class="metric-value" id="total-events">0</span>
+                </div>
+                <div class="metric">
+                    <span>Critical Alerts:</span>
+                    <span class="metric-value" id="critical-alerts" style="color: #ef4444;">0</span>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3>🚨 Recent Events</h3>
+                <div class="events" id="events">
+                    <div class="event info">
+                        <div>System initialized</div>
+                        <div class="timestamp">Waiting for events...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let ws;
+        let eventCount = 0;
+        let criticalCount = 0;
+        
+        function connect() {
+            ws = new WebSocket('ws://localhost:${options.monitorPort}');
+            
+            ws.onopen = function() {
+                document.getElementById('connection-status').className = 'connection-status connected';
+                document.getElementById('connection-status').innerHTML = '✅ Connected to monitor';
+                document.getElementById('status').textContent = 'Connected - Receiving live updates';
+            };
+            
+            ws.onclose = function() {
+                document.getElementById('connection-status').className = 'connection-status disconnected';
+                document.getElementById('connection-status').innerHTML = '❌ Disconnected from monitor';
+                document.getElementById('status').textContent = 'Disconnected - Attempting to reconnect...';
+                
+                // Reconnect after 3 seconds
+                setTimeout(connect, 3000);
+            };
+            
+            ws.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    handleEvent(data);
+                } catch (e) {
+                    console.error('Failed to parse WebSocket message:', e);
+                }
+            };
+            
+            ws.onerror = function(error) {
+                console.error('WebSocket error:', error);
+            };
+        }
+        
+        function handleEvent(data) {
+            eventCount++;
+            document.getElementById('total-events').textContent = eventCount;
+            
+            if (data.type === 'status') {
+                document.getElementById('target-count').textContent = data.data.targets || 0;
+                return;
+            }
+            
+            // Add event to list
+            const eventsContainer = document.getElementById('events');
+            const eventDiv = document.createElement('div');
+            
+            let eventClass = 'info';
+            if (data.severity === 'critical' || data.severity === 'high') {
+                eventClass = 'critical';
+                criticalCount++;
+                document.getElementById('critical-alerts').textContent = criticalCount;
+            } else if (data.severity === 'medium') {
+                eventClass = 'warning';
+            }
+            
+            eventDiv.className = 'event ' + eventClass;
+            eventDiv.innerHTML = \`
+                <div>\${data.type}: \${data.message || JSON.stringify(data.data)}</div>
+                <div class="timestamp">\${new Date(data.timestamp).toLocaleString()}</div>
+            \`;
+            
+            eventsContainer.insertBefore(eventDiv, eventsContainer.firstChild);
+            
+            // Keep only last 50 events
+            while (eventsContainer.children.length > 50) {
+                eventsContainer.removeChild(eventsContainer.lastChild);
+            }
+        }
+        
+        // Start connection
+        connect();
+    </script>
+</body>
+</html>`;
+      
+      const server = http.createServer((_req: any, res: any) => {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(dashboardHtml);
+      });
+      
+      server.listen(parseInt(options.port), () => {
+        console.log(chalk.green('✅ Dashboard server started'));
+        console.log(chalk.blue(`🌐 Open your browser to: http://localhost:${options.port}`));
+        console.log(chalk.gray('📡 Connecting to monitor on port:'), options.monitorPort);
+        console.log(chalk.yellow('🛑 Press Ctrl+C to stop dashboard'));
+      });
+      
+      // Handle graceful shutdown
+      const shutdown = () => {
+        console.log(chalk.yellow('\n🛑 Shutting down dashboard...'));
+        server.close(() => {
+          console.log(chalk.green('✅ Dashboard stopped gracefully'));
+          process.exit(0);
+        });
+      };
+      
+      process.on('SIGINT', shutdown);
+      process.on('SIGTERM', shutdown);
+      
+    } catch (error: any) {
+      console.error(chalk.red('❌ Dashboard startup failed:'), error.message);
+      process.exit(1);
+    }
+  });
+
+/**
  * Configuration Command
  */
 program
