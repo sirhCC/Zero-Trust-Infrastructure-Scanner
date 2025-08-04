@@ -92,6 +92,20 @@ export class SupplyChainScanner {
   private vulnerabilities: Vulnerability[] = [];
   private packages: Package[] = [];
 
+  /**
+   * Add discovered package to the list
+   */
+  private addPackage(pkg: Package): void {
+    this.packages.push(pkg);
+  }
+
+  /**
+   * Get all discovered packages
+   */
+  private getPackageCount(): number {
+    return this.packages.length;
+  }
+
   constructor() {
     logger.info('📦 Supply Chain Scanner initialized');
   }
@@ -136,7 +150,7 @@ export class SupplyChainScanner {
       // Check supply chain risks
       await this.checkSupplyChainRisks(options);
       
-      logger.info(`✅ Supply chain scan completed. Found ${this.findings.length} findings`);
+      logger.info(`✅ Supply chain scan completed. Found ${this.findings.length} findings across ${this.getPackageCount()} packages`);
       
     } catch (error) {
       logger.error('❌ Supply chain scan failed:', error);
@@ -199,11 +213,10 @@ export class SupplyChainScanner {
         return;
       }
 
-      const _fileExtension = path.extname(filePath).toLowerCase();
       const fileName = path.basename(filePath).toLowerCase();
       
       switch (true) {
-        case fileName === 'package.json':
+        case fileName === 'package.json' || fileName.endsWith('-package.json'):
           await this.scanNpmDependencies(filePath, options);
           break;
         case fileName === 'requirements.txt' || fileName === 'pyproject.toml':
@@ -244,6 +257,33 @@ export class SupplyChainScanner {
     try {
       const packageJson = JSON.parse(fs.readFileSync(filePath, 'utf8'));
       
+      // Add packages to our list
+      if (packageJson.dependencies) {
+        Object.keys(packageJson.dependencies).forEach(name => {
+          this.addPackage({
+            name,
+            version: packageJson.dependencies[name],
+            type: 'npm',
+            source: filePath,
+            vulnerabilities: [],
+            risk_score: 0
+          });
+        });
+      }
+      
+      if (packageJson.devDependencies) {
+        Object.keys(packageJson.devDependencies).forEach(name => {
+          this.addPackage({
+            name,
+            version: packageJson.devDependencies[name],
+            type: 'npm',
+            source: filePath,
+            vulnerabilities: [],
+            risk_score: 0
+          });
+        });
+      }
+      
       // Check for vulnerable packages
       this.addFinding('high', 'npm-vulnerable-package', 'Vulnerable NPM package detected',
         'Package "lodash@4.17.15" has known security vulnerabilities (CVE-2021-23337)');
@@ -275,7 +315,7 @@ export class SupplyChainScanner {
   /**
    * Scan Python dependencies
    */
-  private async scanPythonDependencies(filePath: string, _options: SupplyChainScanOptions): Promise<void> {
+  private async scanPythonDependencies(_filePath: string, _options: SupplyChainScanOptions): Promise<void> {
     logger.info('🐍 Scanning Python dependencies');
     
     await this.simulateAnalysis(1200);
@@ -296,7 +336,7 @@ export class SupplyChainScanner {
   /**
    * Scan Java dependencies
    */
-  private async scanJavaDependencies(filePath: string, _options: SupplyChainScanOptions): Promise<void> {
+  private async scanJavaDependencies(_filePath: string, _options: SupplyChainScanOptions): Promise<void> {
     logger.info('☕ Scanning Java dependencies');
     
     await this.simulateAnalysis(1800);
@@ -317,7 +357,7 @@ export class SupplyChainScanner {
   /**
    * Scan PHP dependencies
    */
-  private async scanPHPDependencies(filePath: string, _options: SupplyChainScanOptions): Promise<void> {
+  private async scanPHPDependencies(_filePath: string, _options: SupplyChainScanOptions): Promise<void> {
     logger.info('🐘 Scanning PHP dependencies');
     
     await this.simulateAnalysis(1000);
@@ -329,7 +369,7 @@ export class SupplyChainScanner {
   /**
    * Scan Ruby dependencies
    */
-  private async scanRubyDependencies(filePath: string, _options: SupplyChainScanOptions): Promise<void> {
+  private async scanRubyDependencies(_filePath: string, _options: SupplyChainScanOptions): Promise<void> {
     logger.info('💎 Scanning Ruby dependencies');
     
     await this.simulateAnalysis(1100);
@@ -341,7 +381,7 @@ export class SupplyChainScanner {
   /**
    * Scan Go dependencies
    */
-  private async scanGoDependencies(filePath: string, _options: SupplyChainScanOptions): Promise<void> {
+  private async scanGoDependencies(_filePath: string, _options: SupplyChainScanOptions): Promise<void> {
     logger.info('🐹 Scanning Go dependencies');
     
     await this.simulateAnalysis(900);
@@ -412,6 +452,9 @@ export class SupplyChainScanner {
     } else {
       this.addFinding('info', 'dependency-files-found', 'Dependency files discovered',
         `Found ${foundFiles} dependency files for analysis`);
+      
+      // Initialize packages array for tracking
+      this.packages = [];
     }
   }
 
@@ -427,7 +470,7 @@ export class SupplyChainScanner {
     
     // Simulate vulnerability analysis
     this.addFinding('info', 'vulnerability-summary', 'Vulnerability analysis complete',
-      `Found vulnerabilities above ${minSeverity} severity threshold`);
+      `Found ${this.vulnerabilities.length} vulnerabilities above ${minSeverity} severity threshold`);
     
     // Check for exploit availability
     this.addFinding('high', 'exploitable-vulnerability', 'Exploitable vulnerability detected',
