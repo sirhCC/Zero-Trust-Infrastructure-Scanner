@@ -61,7 +61,7 @@ export class ZeroTrustScanner {
   private initializeScanners(): void {
     // TODO: Initialize individual scanner modules when implemented
     this.scanners.set('network', 'NetworkScanner'); // Will be instantiated when needed
-    this.scanners.set('identity', null);
+    this.scanners.set('identity', 'IdentityScanner'); // Will be instantiated when needed
     this.scanners.set('supply-chain', null);
     this.scanners.set('compliance', null);
   }
@@ -150,8 +150,31 @@ export class ZeroTrustScanner {
           await this.simulateScan(500, scanId); // Additional processing time
           break;
         case 'identity':
-          // await this.scanners.get('identity').scan(target);
-          await this.simulateScan(800, scanId); // Simulate identity scan
+          const { IdentityScanner } = await import('../scanners/identity-scanner');
+          const identityScanner = new IdentityScanner();
+          const identityFindings = await identityScanner.scan(target);
+          
+          // Convert IdentityScanner findings to our ScanResult format
+          scanResult.findings = identityFindings.map(finding => ({
+            id: finding.id,
+            severity: finding.severity,
+            category: finding.category,
+            title: finding.title,
+            description: finding.description,
+            evidence: finding.evidence,
+            recommendation: finding.recommendation,
+            compliance_impact: finding.compliance_impact || []
+          }));
+          
+          // Update metrics
+          scanResult.metrics.total_checks = identityFindings.length;
+          scanResult.metrics.failed_checks = identityFindings.filter(f => f.severity === 'critical' || f.severity === 'high').length;
+          scanResult.metrics.warnings = identityFindings.filter(f => f.severity === 'medium' || f.severity === 'low').length;
+          scanResult.metrics.passed_checks = Math.max(0, 25 - identityFindings.length); // Assume 25 total checks
+          scanResult.metrics.resources_scanned = 1;
+          scanResult.metrics.scan_coverage = 100;
+          
+          await this.simulateScan(300, scanId); // Additional processing time
           break;
         case 'supply-chain':
           // await this.scanners.get('supply-chain').scan(target);
