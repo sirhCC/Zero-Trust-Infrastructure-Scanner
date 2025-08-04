@@ -62,8 +62,8 @@ export class ZeroTrustScanner {
     // TODO: Initialize individual scanner modules when implemented
     this.scanners.set('network', 'NetworkScanner'); // Will be instantiated when needed
     this.scanners.set('identity', 'IdentityScanner'); // Will be instantiated when needed
-    this.scanners.set('supply-chain', null);
-    this.scanners.set('compliance', null);
+    this.scanners.set('supply-chain', 'SupplyChainScanner'); // Will be instantiated when needed
+    this.scanners.set('compliance', 'ComplianceScanner'); // Will be instantiated when needed
   }
 
   /**
@@ -177,12 +177,59 @@ export class ZeroTrustScanner {
           await this.simulateScan(300, scanId); // Additional processing time
           break;
         case 'supply-chain':
-          // await this.scanners.get('supply-chain').scan(target);
-          await this.simulateScan(1200, scanId); // Simulate supply chain scan
+          const { SupplyChainScanner } = await import('../scanners/supply-chain-scanner');
+          const supplyChainScanner = new SupplyChainScanner();
+          const supplyChainFindings = await supplyChainScanner.scan(target);
+          
+          // Convert SupplyChainScanner findings to our ScanResult format
+          scanResult.findings = supplyChainFindings.map(finding => ({
+            id: finding.id,
+            severity: finding.severity,
+            category: finding.category,
+            title: finding.title,
+            description: finding.description,
+            evidence: finding.evidence,
+            recommendation: finding.recommendation,
+            compliance_impact: finding.compliance_impact || []
+          }));
+          
+          // Update metrics
+          scanResult.metrics.total_checks = supplyChainFindings.length;
+          scanResult.metrics.failed_checks = supplyChainFindings.filter(f => f.severity === 'critical' || f.severity === 'high').length;
+          scanResult.metrics.warnings = supplyChainFindings.filter(f => f.severity === 'medium' || f.severity === 'low').length;
+          scanResult.metrics.passed_checks = Math.max(0, 30 - supplyChainFindings.length); // Assume 30 total checks
+          scanResult.metrics.resources_scanned = 1;
+          scanResult.metrics.scan_coverage = 100;
+          
+          await this.simulateScan(400, scanId); // Additional processing time
           break;
         case 'compliance':
-          // await this.scanners.get('compliance').scan(target);
-          await this.simulateScan(1500, scanId); // Simulate compliance scan
+          const { ComplianceScanner } = await import('../scanners/compliance-scanner');
+          const complianceScanner = new ComplianceScanner();
+          await complianceScanner.initialize();
+          const complianceFindings = await complianceScanner.scan(target);
+          
+          // Convert ComplianceScanner findings to our ScanResult format
+          scanResult.findings = complianceFindings.map(finding => ({
+            id: finding.id,
+            severity: finding.severity,
+            category: finding.category,
+            title: finding.title,
+            description: finding.description,
+            evidence: finding.evidence,
+            recommendation: finding.recommendation,
+            compliance_impact: finding.compliance_impact || []
+          }));
+          
+          // Update metrics
+          scanResult.metrics.total_checks = complianceFindings.length;
+          scanResult.metrics.failed_checks = complianceFindings.filter(f => f.severity === 'critical' || f.severity === 'high').length;
+          scanResult.metrics.warnings = complianceFindings.filter(f => f.severity === 'medium' || f.severity === 'low').length;
+          scanResult.metrics.passed_checks = Math.max(0, 25 - complianceFindings.length); // Assume 25 total checks
+          scanResult.metrics.resources_scanned = 1;
+          scanResult.metrics.scan_coverage = 100;
+          
+          await this.simulateScan(1500, scanId); // Additional processing time
           break;
         case 'comprehensive':
           // await this.runComprehensiveScan(target);
