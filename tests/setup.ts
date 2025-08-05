@@ -9,12 +9,19 @@ process.env.LOG_LEVEL = 'error'; // Reduce noise during tests
 // Global test configuration
 jest.setTimeout(30000);
 
-// Mock external dependencies that might not be available in test environment
-jest.mock('fs', () => ({
-  existsSync: jest.fn(),
-  readFileSync: jest.fn(),
-  writeFileSync: jest.fn(),
-  mkdirSync: jest.fn(),
+// Only mock external dependencies that might not be available in test environment
+// Don't mock fs as scanners may need to read files
+jest.mock('axios', () => ({
+  get: jest.fn(),
+  post: jest.fn(),
+  put: jest.fn(),
+  delete: jest.fn(),
+}));
+
+// Mock network requests but allow filesystem access
+jest.mock('node-cron', () => ({
+  schedule: jest.fn(),
+  destroy: jest.fn(),
 }));
 
 // Suppress console output during tests (unless testing logging)

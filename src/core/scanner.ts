@@ -147,7 +147,7 @@ export class ZeroTrustScanner {
           scanResult.metrics.resources_scanned = 1;
           scanResult.metrics.scan_coverage = 100;
           
-          await this.simulateScan(500, scanId); // Additional processing time
+          await this.simulateScan(1500, scanId); // Additional processing time
           break;
         case 'identity':
           const { IdentityScanner } = await import('../scanners/identity-scanner');
@@ -174,7 +174,7 @@ export class ZeroTrustScanner {
           scanResult.metrics.resources_scanned = 1;
           scanResult.metrics.scan_coverage = 100;
           
-          await this.simulateScan(300, scanId); // Additional processing time
+          await this.simulateScan(1200, scanId); // Additional processing time
           break;
         case 'supply-chain':
           const { SupplyChainScanner } = await import('../scanners/supply-chain-scanner');
@@ -201,7 +201,7 @@ export class ZeroTrustScanner {
           scanResult.metrics.resources_scanned = 1;
           scanResult.metrics.scan_coverage = 100;
           
-          await this.simulateScan(400, scanId); // Additional processing time
+          await this.simulateScan(1000, scanId); // Additional processing time
           break;
         case 'compliance':
           const { ComplianceScanner } = await import('../scanners/compliance-scanner');
@@ -229,7 +229,7 @@ export class ZeroTrustScanner {
           scanResult.metrics.resources_scanned = 1;
           scanResult.metrics.scan_coverage = 100;
           
-          await this.simulateScan(1500, scanId); // Additional processing time
+          await this.simulateScan(2000, scanId); // Additional processing time
           break;
         case 'comprehensive':
           // await this.runComprehensiveScan(target);
