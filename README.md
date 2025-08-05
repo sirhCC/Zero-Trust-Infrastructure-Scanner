@@ -1,137 +1,89 @@
-# Zero-Trust Infrastructure Scanner
+# 🛡️ Zero-Trust Infrastructure Scanner
 
-Enterprise-grade security scanning platform for modern cloud infrastructure.
+<div align="center">
 
-## 🛡️ Features
+![Zero-Trust Banner](https://img.shields.io/badge/Zero--Trust-Infrastructure%20Scanner-blue?style=for-the-badge&logo=shield)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue?style=flat-square&logo=typescript)
+![Enterprise Grade](https://img.shields.io/badge/Enterprise-Grade-gold?style=flat-square)
+![Real-Time](https://img.shields.io/badge/Real--Time-Monitoring-green?style=flat-square)
 
-### Core Security Modules
-- **🔍 Network Micro-Segmentation**: Analyze and recommend network security policies
-- **👤 Identity Permission Mining**: Detect over-privileged accounts and analyze IAM permissions
-- **📦 Supply Chain Security**: Scan container images and dependencies for vulnerabilities
-- **📋 Compliance Automation**: Automated SOC2, PCI, HIPAA compliance checking
+**Enterprise-grade security scanning platform for modern cloud infrastructure**
 
-### Real-Time Monitoring
-- **📡 Live Monitoring**: Continuous security monitoring with WebSocket-based live updates
-- **🚨 Real-Time Alerts**: Instant notifications for security findings via Slack, Teams, webhooks, and email
-- **📊 Live Dashboard**: Web-based real-time monitoring dashboard with live metrics
-- **🔄 Event-Driven Architecture**: Scalable monitoring with intelligent change detection
-- **⚡ Continuous Scanning**: Configurable scan intervals for proactive threat detection
+*Comprehensive zero-trust security with behavioral analysis and real-time monitoring*
 
-### Enterprise Capabilities
-- **⚡ High Performance**: Parallel scanning with intelligent resource management
-- **🔧 Configurable**: Comprehensive configuration system with validation
-- **📊 Rich Reporting**: Multiple output formats (JSON, YAML, HTML, PDF)
-- **🌐 Multi-Cloud**: Support for AWS, Azure, GCP
-- **🔌 Extensible**: Plugin architecture for custom scanners
+</div>
 
-> **Latest Update**: The scanner now includes enterprise-grade real-time monitoring capabilities with WebSocket-based live updates, multi-channel alerting, and a professional web dashboard. Over **4,500+ lines** of production-ready TypeScript code across all modules.
+## ⚡ Quick Overview
+
+The **Zero-Trust Infrastructure Scanner** is a comprehensive security platform that implements zero-trust principles across your entire infrastructure:
+
+- 🔍 **Network Micro-Segmentation** - Analyze and secure network policies
+- 👤 **Identity Permission Mining** - Detect over-privileged accounts
+- 📦 **Supply Chain Security** - Scan containers and dependencies
+- 📋 **Compliance Automation** - SOC2, PCI, HIPAA compliance checking
+- 📡 **Real-Time Monitoring** - Live security monitoring with WebSocket dashboard
+- 🧠 **Behavioral Analysis** - ML-powered anomaly detection with statistical models
+
+> **4,500+ lines** of production-ready TypeScript code with enterprise-grade capabilities
+
+📖 **[View Complete Documentation](https://github.com/sirhCC/Zero-Trust-Infrastructure-Scanner/wiki)** - Comprehensive guides, advanced features, and detailed configuration options
 
 ## 🚀 Quick Start
 
-### Installation
-
 ```bash
-# Clone the repository
+# Clone and setup
 git clone https://github.com/sirhCC/Zero-Trust-Infrastructure-Scanner.git
 cd Zero-Trust-Infrastructure-Scanner
+npm install && npm run build
 
-# Install dependencies
-npm install
-
-# Build the project
-npm run build
-```
-
-### Basic Usage
-
-```bash
 # Initialize configuration
 npm run scan config -- --init
 
-# Run comprehensive security scan
-npm run scan-all
-
-# Scan specific modules
-npm run scan:network
-npm run scan:identity
-npm run scan:supply-chain
-npm run scan:compliance
+# Run security scans
+npm run scan-all                    # Comprehensive scan
+npm run scan:network                # Network security
+npm run scan:identity               # Identity permissions
+npm run scan:supply-chain          # Dependencies & containers
+npm run scan:compliance            # Compliance checking
 
 # Real-time monitoring
-npm run scan monitor --targets localhost --interval 30
-npm run scan dashboard --port 3000
+node dist/cli.js monitor --targets localhost --interval 30
+node dist/cli.js dashboard --port 3000    # Web dashboard
 
-# Start web dashboard
-npm run scan server
+# Behavioral analysis
+node dist/cli.js behavioral monitor --real-time
 ```
 
-## � Real-Time Monitoring Quick Start
+## 📡 Real-Time Dashboard
 
-Get started with live security monitoring in just a few commands:
+Get live security monitoring in seconds:
 
 ```bash
-# Terminal 1: Start the real-time monitor
+# Terminal 1: Start monitoring
 node dist/cli.js monitor --targets localhost --interval 30
 
-# Terminal 2: Start the web dashboard
+# Terminal 2: Start web dashboard  
 node dist/cli.js dashboard --port 3000
 
-# Open browser to: http://localhost:3000
+# Open: http://localhost:3000
 ```
 
-You'll immediately see:
-- **Live security scans** running every 30 seconds
-- **Real-time findings** appearing in the dashboard
-- **WebSocket connection status** with automatic reconnection
-- **Event stream** with color-coded severity levels
+**Features:**
+- 📊 Live security metrics and event stream
+- 🚨 Multi-channel alerts (Slack, Teams, webhooks, email)
+- 🧠 Behavioral analysis with ML anomaly detection
+- 🔄 Continuous scanning with configurable intervals
 
-For production deployments with alerts:
+## 🛠️ Core Commands
 
-```bash
-# Production monitoring with Slack alerts
-node dist/cli.js monitor \
-  --targets "production-network,staging-network" \
-  --interval 60 \
-  --slack-webhook "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
-```
-
-## �📋 CLI Commands
-
-### Network Security
-```bash
-# Scan network micro-segmentation
-npm run scan network --target 10.0.0.0/16 --cloud-provider aws
-
-# Analyze Kubernetes network policies
-npm run scan network --k8s-namespace production
-```
-
-### Identity Security
-```bash
-# Scan AWS IAM permissions
-npm run scan identity --provider aws-iam
-
-# Analyze over-privileged accounts
-npm run scan identity --privilege-threshold high
-```
-
-### Supply Chain Security
-```bash
-# Scan container image
-npm run scan supply-chain --image nginx:latest
-
-# Scan current project dependencies
-npm run scan supply-chain --file package.json
-```
-
-### Compliance Checking
-```bash
-# Run SOC2 compliance scan
-npm run scan compliance --standard soc2
-
-# Generate compliance report
-npm run scan compliance --standard all --report-format pdf
-```
+| Command | Purpose | Example |
+|---------|---------|---------|
+| `network` | Network security analysis | `npm run scan network --target 10.0.0.0/16` |
+| `identity` | IAM permissions audit | `npm run scan identity --provider aws-iam` |
+| `supply-chain` | Vulnerability scanning | `npm run scan supply-chain --image nginx:latest` |
+| `compliance` | Compliance checking | `npm run scan compliance --standard soc2` |
+| `monitor` | Real-time monitoring | `node dist/cli.js monitor --targets localhost` |
+| `behavioral` | Behavioral analysis | `node dist/cli.js behavioral profiles --list` |
 
 ## 📡 Real-Time Monitoring
 
@@ -169,6 +121,7 @@ npm run scan dashboard --port 3000 --monitor-port 3002
 ```
 
 Then open your browser to `http://localhost:3000` to view:
+
 - **Live Security Metrics**: Real-time counts of targets, scans, and alerts
 - **Event Stream**: Live feed of security findings with severity-based color coding
 - **Connection Status**: WebSocket connection health with auto-reconnection
@@ -243,6 +196,7 @@ This creates `ztis.config.json` with comprehensive settings for all scanner modu
 ## 🏗️ Architecture
 
 ### Core Components
+
 - **Scanner Engine**: Central orchestration and execution
 - **Real-Time Monitor**: WebSocket-based continuous monitoring engine
 - **Configuration Manager**: Flexible configuration system
@@ -251,6 +205,7 @@ This creates `ztis.config.json` with comprehensive settings for all scanner modu
 - **Live Dashboard**: Real-time web interface with WebSocket updates
 
 ### Scanner Modules
+
 - **Network Scanner**: Network topology and security analysis
 - **Identity Scanner**: IAM and permission analysis
 - **Supply Chain Scanner**: Vulnerability and dependency analysis
@@ -266,6 +221,7 @@ The scanner generates comprehensive reports in multiple formats:
 - **PDF**: Professional compliance reports
 
 ### Report Structure
+
 ```json
 {
   "scanId": "scan_1691234567_abc123",
@@ -294,6 +250,7 @@ The scanner generates comprehensive reports in multiple formats:
 ## 🔧 Development
 
 ### Project Structure
+
 ```
 src/
 ├── core/           # Core scanner engine
@@ -306,6 +263,7 @@ src/
 ```
 
 ### Building and Testing
+
 ```bash
 # Development mode
 npm run dev
