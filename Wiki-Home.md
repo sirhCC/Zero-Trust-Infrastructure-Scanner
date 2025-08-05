@@ -28,7 +28,7 @@
 - [🔧 **Development Guide**](#-development-guide)
 - [🤝 **Contributing**](#-contributing)
 - [❓ **FAQ**](#-faq)
-- [🔬 **Advanced Documentation**](./ADVANCED_DOCUMENTATION.md) - Enterprise deployment and technical deep dive
+- [🔬 **Advanced Documentation**](https://github.com/sirhCC/Zero-Trust-Infrastructure-Scanner/blob/main/ADVANCED_DOCUMENTATION.md) - Enterprise deployment and technical deep dive
 
 ---
 
