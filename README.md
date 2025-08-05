@@ -24,8 +24,6 @@ The **Zero-Trust Infrastructure Scanner** is a comprehensive security platform t
 - 📡 **Real-Time Monitoring** - Live security monitoring with WebSocket dashboard
 - 🧠 **Behavioral Analysis** - ML-powered anomaly detection with statistical models
 
-> **4,500+ lines** of production-ready TypeScript code with enterprise-grade capabilities
-
 📖 **[View Complete Documentation](https://github.com/sirhCC/Zero-Trust-Infrastructure-Scanner/wiki)** - Comprehensive guides, advanced features, and detailed configuration options
 
 ## 🚀 Quick Start
