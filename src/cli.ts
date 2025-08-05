@@ -10,6 +10,7 @@ import chalk from 'chalk';
 import { version } from '../package.json';
 import { createBehavioralCommands } from './cli/behavioral-commands';
 import { addRiskScoringCommands } from './cli/risk-commands';
+import mlRiskCommands from './cli/ml-risk-commands';
 
 const program = new Command();
 
@@ -839,6 +840,9 @@ createBehavioralCommands(program);
 
 // Add ML risk scoring commands
 addRiskScoringCommands(program);
+
+// Add enhanced ML risk scoring commands
+program.addCommand(mlRiskCommands);
 
 // Error handling
 program.exitOverride((err) => {
