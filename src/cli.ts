@@ -8,6 +8,7 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { version } from '../package.json';
+import { createBehavioralCommands } from './cli/behavioral-commands';
 
 const program = new Command();
 
@@ -831,6 +832,9 @@ program
     // TODO: Start server
     console.log(chalk.yellow('⚠️  Web server coming soon...'));
   });
+
+// Add behavioral analysis commands
+createBehavioralCommands(program);
 
 // Error handling
 program.exitOverride((err) => {
