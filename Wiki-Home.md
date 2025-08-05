@@ -28,6 +28,7 @@
 - [🔧 **Development Guide**](#-development-guide)
 - [🤝 **Contributing**](#-contributing)
 - [❓ **FAQ**](#-faq)
+- [🔬 **Advanced Documentation**](./ADVANCED_DOCUMENTATION.md) - Enterprise deployment and technical deep dive
 
 ---
 
@@ -574,14 +575,7 @@ A: Follow the plugin architecture guide in the development section.
 
 ## 📚 Additional Resources
 
-### 🔗 Quick Links
-
-- [📖 **Full Documentation**](https://github.com/sirhCC/Zero-Trust-Infrastructure-Scanner/wiki)
-- [🐛 **Report Issues**](https://github.com/sirhCC/Zero-Trust-Infrastructure-Scanner/issues)
-- [💬 **Discussions**](https://github.com/sirhCC/Zero-Trust-Infrastructure-Scanner/discussions)
-- [🚀 **Enhancement Roadmap**](./ENHANCEMENT_ROADMAP.md)
-
-### 📊 Project Statistics
+###  Project Statistics
 
 | Metric | Value |
 |--------|-------|
