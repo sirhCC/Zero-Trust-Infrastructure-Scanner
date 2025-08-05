@@ -1,0 +1,8 @@
+{
+  "asset_criticality": "critical",
+  "data_sensitivity": "restricted",
+  "compliance_requirements": ["SOC2", "PCI", "HIPAA", "GDPR"],
+  "business_hours": true,
+  "internet_facing": true,
+  "user_count": 100000
+}

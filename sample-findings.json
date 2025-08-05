@@ -1,0 +1,62 @@
+[
+  {
+    "id": "finding_001",
+    "severity": "critical",
+    "category": "injection",
+    "title": "SQL Injection in user authentication endpoint",
+    "description": "Critical SQL injection vulnerability allowing database access bypass",
+    "evidence": {
+      "endpoint": "/api/auth/login",
+      "parameter": "username", 
+      "payload": "' OR 1=1 --",
+      "response": "200 OK with admin privileges"
+    },
+    "recommendation": "Implement parameterized queries and input validation",
+    "compliance_impact": [
+      {
+        "standard": "SOC2",
+        "control": "CC6.1",
+        "impact": "critical"
+      },
+      {
+        "standard": "PCI",
+        "control": "6.5.1", 
+        "impact": "high"
+      }
+    ]
+  },
+  {
+    "id": "finding_002",
+    "severity": "high",
+    "category": "authentication",
+    "title": "Missing multi-factor authentication",
+    "description": "Administrative accounts lack MFA protection",
+    "evidence": {
+      "affected_accounts": 15,
+      "admin_accounts": 5,
+      "privileged_access": true
+    },
+    "recommendation": "Enable MFA for all administrative accounts",
+    "compliance_impact": [
+      {
+        "standard": "SOC2",
+        "control": "CC6.2",
+        "impact": "high"
+      }
+    ]
+  },
+  {
+    "id": "finding_003", 
+    "severity": "medium",
+    "category": "cryptography",
+    "title": "Weak SSL/TLS configuration",
+    "description": "Server supports deprecated TLS 1.0 and weak cipher suites",
+    "evidence": {
+      "supported_protocols": ["TLS 1.0", "TLS 1.1", "TLS 1.2"],
+      "weak_ciphers": ["DES-CBC3-SHA", "RC4-SHA"],
+      "pfs_support": false
+    },
+    "recommendation": "Disable TLS 1.0/1.1 and weak ciphers, enable perfect forward secrecy",
+    "compliance_impact": []
+  }
+]

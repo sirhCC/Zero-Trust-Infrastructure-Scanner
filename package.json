@@ -45,6 +45,8 @@
     "jsonwebtoken": "^9.0.2",
     "node-cron": "^3.0.2",
     "ora": "^5.4.1",
+    "regression": "^2.0.1",
+    "simple-statistics": "^7.8.3",
     "winston": "^3.10.0",
     "ws": "^8.18.3",
     "yaml": "^2.3.2"
