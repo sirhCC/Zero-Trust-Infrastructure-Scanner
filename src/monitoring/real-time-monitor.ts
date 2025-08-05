@@ -15,6 +15,7 @@ import { EventEmitter } from 'events';
 import { ZeroTrustScanner } from '../core/scanner';
 import { ScanTarget, SecurityFinding, ScanResult } from '../core/scanner';
 import { Logger } from '../utils/logger';
+import BehavioralMonitoringIntegration, { EnhancedSecurityEvent } from '../analytics/behavioral-integration';
 
 // Create logger instance
 const logger = Logger.getInstance();
@@ -71,7 +72,7 @@ export interface ChangeDetectionConfig {
 export interface MonitoringEvent {
   id: string;
   timestamp: Date;
-  type: 'scan_started' | 'scan_completed' | 'finding_detected' | 'finding_resolved' | 'target_changed' | 'alert_triggered';
+  type: 'scan_started' | 'scan_completed' | 'finding_detected' | 'finding_resolved' | 'target_changed' | 'alert_triggered' | 'behavioral_anomaly';
   target_id: string;
   data: any;
   severity: 'critical' | 'high' | 'medium' | 'low' | 'info';
@@ -80,7 +81,7 @@ export interface MonitoringEvent {
 export interface LiveUpdate {
   event_id: string;
   timestamp: Date;
-  type: 'status' | 'finding' | 'metric' | 'alert';
+  type: 'status' | 'finding' | 'metric' | 'alert' | 'behavioral_baseline_update';
   target: string;
   data: any;
 }
@@ -94,16 +95,82 @@ export class RealTimeMonitor extends EventEmitter {
   private alertQueue: MonitoringEvent[] = [];
   private isRunning: boolean = false;
   private targetBaselines: Map<string, SecurityFinding[]> = new Map();
+  private behavioralAnalysis: BehavioralMonitoringIntegration;
 
   constructor(config: MonitoringConfig) {
     super();
     this.config = config;
     this.scanner = new ZeroTrustScanner();
     
-    logger.info('🔴 Real-Time Monitor initialized', {
+    // Initialize behavioral analysis integration
+    this.behavioralAnalysis = new BehavioralMonitoringIntegration({
+      enabled: true,
+      analysis_interval: config.scan_interval,
+      anomaly_threshold: 0.6,
+      real_time_updates: true,
+      baseline_update_frequency: 24,
+      profile_retention_days: 90
+    });
+
+    this.setupBehavioralEventHandlers();
+    
+    logger.info('🔴 Real-Time Monitor initialized with Behavioral Analysis', {
       targets: config.targets.length,
       scan_interval: config.scan_interval,
-      websocket_port: config.websocket.port
+      websocket_port: config.websocket.port,
+      behavioral_analysis: true
+    });
+  }
+
+  /**
+   * Setup behavioral analysis event handlers
+   */
+  private setupBehavioralEventHandlers(): void {
+    // Listen for behavioral events
+    this.behavioralAnalysis.on('behavioral_events', (events: EnhancedSecurityEvent[]) => {
+      this.handleBehavioralEvents(events);
+    });
+
+    // Listen for high-severity anomalies
+    this.behavioralAnalysis.on('high_severity_anomalies', (anomalies: any[]) => {
+      logger.warn('High-severity behavioral anomalies detected', {
+        count: anomalies.length,
+        critical_count: anomalies.filter(a => a.severity === 'critical').length
+      });
+
+      // Send immediate alerts for critical anomalies
+      for (const anomaly of anomalies.filter(a => a.severity === 'critical')) {
+        this.emitEvent({
+          id: this.generateEventId(),
+          timestamp: new Date(),
+          type: 'behavioral_anomaly',
+          target_id: 'behavioral_analysis',
+          data: {
+            anomaly_type: anomaly.indicator_type,
+            severity: anomaly.severity,
+            score: anomaly.score,
+            description: anomaly.description,
+            evidence: anomaly.evidence
+          },
+          severity: 'critical'
+        });
+      }
+    });
+
+    // Listen for baseline updates
+    this.behavioralAnalysis.on('baseline_update_completed', (data: any) => {
+      logger.info('Behavioral baseline update completed', data);
+      
+      this.broadcastLiveUpdate({
+        event_id: this.generateEventId(),
+        timestamp: new Date(),
+        type: 'behavioral_baseline_update',
+        target: 'behavioral_analysis',
+        data: {
+          profiles_count: data.profiles_count,
+          update_timestamp: data.timestamp
+        }
+      });
     });
   }
 
@@ -335,6 +402,16 @@ export class RealTimeMonitor extends EventEmitter {
     const currentFindings = result.findings;
     const baseline = this.targetBaselines.get(target.id) || [];
     
+    // Run behavioral analysis on scan results
+    try {
+      const behavioralEvents = await this.behavioralAnalysis.processScanResults([result]);
+      if (behavioralEvents.length > 0) {
+        this.handleBehavioralEvents(behavioralEvents);
+      }
+    } catch (error) {
+      logger.error('Error in behavioral analysis processing', error);
+    }
+    
     if (this.config.change_detection.enabled) {
       // Detect new findings
       const newFindings = this.detectNewFindings(currentFindings, baseline);
@@ -463,6 +540,73 @@ export class RealTimeMonitor extends EventEmitter {
         finding: finding
       }
     });
+  }
+
+  /**
+   * Handle behavioral analysis events
+   */
+  private handleBehavioralEvents(events: EnhancedSecurityEvent[]): void {
+    for (const event of events) {
+      logger.info(`🧠 Behavioral event detected: ${event.event_type} for ${event.entity_id}`, {
+        severity: event.severity,
+        entity_type: event.entity_type,
+        anomaly_score: event.behavioral_context.anomaly_score,
+        confidence: event.behavioral_context.confidence_level
+      });
+
+      // Emit behavioral event
+      this.emitEvent({
+        id: this.generateEventId(),
+        timestamp: new Date(),
+        type: event.event_type === 'behavioral_anomaly' ? 'behavioral_anomaly' : 'finding_detected',
+        target_id: event.entity_id,
+        data: {
+          entity_type: event.entity_type,
+          behavioral_context: event.behavioral_context,
+          anomaly_indicators: event.anomaly_indicators,
+          recommended_actions: event.recommended_actions,
+          scan_result: event.scan_result
+        },
+        severity: event.severity
+      });
+
+      // Send live update for behavioral events
+      this.broadcastLiveUpdate({
+        event_id: this.generateEventId(),
+        timestamp: new Date(),
+        type: 'alert',
+        target: event.entity_id,
+        data: {
+          event_type: event.event_type,
+          behavioral_score: event.behavioral_context.anomaly_score,
+          confidence_level: event.behavioral_context.confidence_level,
+          patterns: event.behavioral_context.behavioral_patterns,
+          recommended_actions: event.recommended_actions.slice(0, 3), // First 3 actions
+          severity: event.severity
+        }
+      });
+
+      // Process high-severity behavioral events for alerting
+      if ((event.severity === 'high' || event.severity === 'critical') && 
+          this.shouldTriggerAlert(event.severity)) {
+        
+        this.alertQueue.push({
+          id: this.generateEventId(),
+          timestamp: new Date(),
+          type: 'alert_triggered',
+          target_id: event.entity_id,
+          data: {
+            alert_type: 'behavioral_anomaly',
+            entity_type: event.entity_type,
+            anomaly_score: event.behavioral_context.anomaly_score,
+            confidence: event.behavioral_context.confidence_level,
+            description: `Behavioral anomaly detected for ${event.entity_type}: ${event.entity_id}`,
+            recommended_actions: event.recommended_actions
+          },
+          severity: event.severity
+        });
+      }
+    }
   }
 
   /**
@@ -668,5 +812,88 @@ export class RealTimeMonitor extends EventEmitter {
     this.targetBaselines.delete(targetId);
     
     logger.info(`➖ Removed monitoring target: ${targetId}`);
+  }
+
+  /**
+   * Get comprehensive monitoring statistics including behavioral analysis
+   */
+  getMonitoringStats(): {
+    targets: number;
+    active_scans: number;
+    connected_clients: number;
+    alerts_queued: number;
+    behavioral_stats: any;
+  } {
+    return {
+      targets: this.config.targets.length,
+      active_scans: this.monitoringIntervals.size,
+      connected_clients: this.connectedClients.size,
+      alerts_queued: this.alertQueue.length,
+      behavioral_stats: this.behavioralAnalysis.getBehavioralStats()
+    };
+  }
+
+  /**
+   * Get top anomalous behavioral profiles
+   */
+  getTopAnomalousProfiles(limit: number = 5): any[] {
+    return this.behavioralAnalysis.getTopAnomalousProfiles(limit);
+  }
+
+  /**
+   * Export behavioral analysis data
+   */
+  exportBehavioralData(): any {
+    return this.behavioralAnalysis.exportBehavioralData();
+  }
+
+  /**
+   * Update behavioral analysis configuration
+   */
+  updateBehavioralConfig(config: any): void {
+    this.behavioralAnalysis.updateConfig(config);
+    logger.info('Behavioral analysis configuration updated');
+  }
+
+  /**
+   * Shutdown monitoring with proper cleanup
+   */
+  async shutdown(): Promise<void> {
+    logger.info('🛑 Shutting down Real-Time Monitor...');
+
+    this.isRunning = false;
+
+    // Stop all monitoring intervals
+    for (const [targetId, interval] of this.monitoringIntervals) {
+      clearInterval(interval);
+      logger.debug(`Stopped monitoring for target: ${targetId}`);
+    }
+    this.monitoringIntervals.clear();
+
+    // Close WebSocket server
+    if (this.wsServer) {
+      // Close all client connections
+      this.connectedClients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) {
+          client.close(1000, 'Server shutting down');
+        }
+      });
+      
+      // Close server
+      this.wsServer.close();
+      this.wsServer = null;
+      logger.info('🔌 WebSocket server closed');
+    }
+
+    // Shutdown behavioral analysis
+    this.behavioralAnalysis.shutdown();
+
+    // Clear alert queue
+    this.alertQueue = [];
+
+    // Remove all event listeners
+    this.removeAllListeners();
+
+    logger.info('✅ Real-Time Monitor shutdown complete');
   }
 }
