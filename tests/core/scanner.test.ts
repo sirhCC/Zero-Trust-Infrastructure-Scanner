@@ -8,7 +8,8 @@ describe('ZeroTrustScanner', () => {
   let scanner: ZeroTrustScanner;
 
   beforeEach(() => {
-    scanner = new ZeroTrustScanner();
+    // Enable test mode to suppress expected error messages during tests
+    scanner = new ZeroTrustScanner(true);
   });
 
   describe('initialization', () => {
