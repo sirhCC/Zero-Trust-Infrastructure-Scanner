@@ -3,6 +3,9 @@
  * Main orchestrator for all security scanning operations
  */
 
+import { SCANNER_CONFIGS } from './scanner-config';
+import { ScannerResultProcessor } from './scanner-result-processor';
+
 export interface ScanTarget {
   type: 'network' | 'identity' | 'supply-chain' | 'compliance' | 'comprehensive';
   target: string;
@@ -49,9 +52,11 @@ export class ZeroTrustScanner {
   private scanners: Map<string, any> = new Map();
   private activeScans: Map<string, ScanResult> = new Map();
   private scanHistory: ScanResult[] = [];
+  private isTestMode: boolean = false;
 
-  constructor() {
+  constructor(testMode: boolean = false) {
     // Initialize with basic configuration
+    this.isTestMode = testMode;
     this.initializeScanners();
   }
 
@@ -59,11 +64,11 @@ export class ZeroTrustScanner {
    * Initialize the scanner modules
    */
   private initializeScanners(): void {
-    // TODO: Initialize individual scanner modules when implemented
-    this.scanners.set('network', 'NetworkScanner'); // Will be instantiated when needed
-    this.scanners.set('identity', 'IdentityScanner'); // Will be instantiated when needed
-    this.scanners.set('supply-chain', 'SupplyChainScanner'); // Will be instantiated when needed
-    this.scanners.set('compliance', 'ComplianceScanner'); // Will be instantiated when needed
+    // Initialize scanner registry from configuration
+    Object.keys(SCANNER_CONFIGS).forEach(scannerType => {
+      const config = SCANNER_CONFIGS[scannerType];
+      this.scanners.set(scannerType, config.className);
+    });
   }
 
   /**
@@ -72,11 +77,8 @@ export class ZeroTrustScanner {
   async initialize(): Promise<void> {
     console.log('🔧 Initializing Zero-Trust Scanner...');
     
-    // TODO: Initialize individual scanner modules
-    // this.scanners.set('network', new NetworkScanner());
-    // this.scanners.set('identity', new IdentityScanner());
-    // this.scanners.set('supply-chain', new SupplyChainScanner());
-    // this.scanners.set('compliance', new ComplianceScanner());
+    // Scanner modules are loaded dynamically as needed
+    console.log(`📊 Registered ${this.scanners.size} scanner types`);
     
     console.log('✅ Scanner initialization complete');
   }
@@ -118,137 +120,51 @@ export class ZeroTrustScanner {
     this.activeScans.set(scanId, scanResult);
 
     try {
-      console.log(`🔍 Starting ${target.type} scan for: ${target.target}`);
+      if (!this.isTestMode) {
+        console.log(`🔍 Starting ${target.type} scan for: ${target.target}`);
+      }
       
-      // TODO: Route to appropriate scanner
-      switch (target.type) {
-        case 'network':
-          const { NetworkScanner } = await import('../scanners/network-scanner');
-          const networkScanner = new NetworkScanner();
-          const networkFindings = await networkScanner.scan(target);
-          
-          // Convert NetworkScanner findings to our ScanResult format
-          scanResult.findings = networkFindings.map(finding => ({
-            id: finding.id,
-            severity: finding.severity,
-            category: finding.category,
-            title: finding.title,
-            description: finding.description,
-            evidence: finding.evidence,
-            recommendation: finding.recommendation,
-            compliance_impact: finding.compliance_impact || []
-          }));
-          
-          // Update metrics
-          scanResult.metrics.total_checks = networkFindings.length;
-          scanResult.metrics.failed_checks = networkFindings.filter(f => f.severity === 'critical' || f.severity === 'high').length;
-          scanResult.metrics.warnings = networkFindings.filter(f => f.severity === 'medium' || f.severity === 'low').length;
-          scanResult.metrics.passed_checks = Math.max(0, 20 - networkFindings.length); // Assume 20 total checks
-          scanResult.metrics.resources_scanned = 1;
-          scanResult.metrics.scan_coverage = 100;
-          
-          await this.simulateScan(1500, scanId); // Additional processing time
-          break;
-        case 'identity':
-          const { IdentityScanner } = await import('../scanners/identity-scanner');
-          const identityScanner = new IdentityScanner();
-          const identityFindings = await identityScanner.scan(target);
-          
-          // Convert IdentityScanner findings to our ScanResult format
-          scanResult.findings = identityFindings.map(finding => ({
-            id: finding.id,
-            severity: finding.severity,
-            category: finding.category,
-            title: finding.title,
-            description: finding.description,
-            evidence: finding.evidence,
-            recommendation: finding.recommendation,
-            compliance_impact: finding.compliance_impact || []
-          }));
-          
-          // Update metrics
-          scanResult.metrics.total_checks = identityFindings.length;
-          scanResult.metrics.failed_checks = identityFindings.filter(f => f.severity === 'critical' || f.severity === 'high').length;
-          scanResult.metrics.warnings = identityFindings.filter(f => f.severity === 'medium' || f.severity === 'low').length;
-          scanResult.metrics.passed_checks = Math.max(0, 25 - identityFindings.length); // Assume 25 total checks
-          scanResult.metrics.resources_scanned = 1;
-          scanResult.metrics.scan_coverage = 100;
-          
-          await this.simulateScan(1200, scanId); // Additional processing time
-          break;
-        case 'supply-chain':
-          const { SupplyChainScanner } = await import('../scanners/supply-chain-scanner');
-          const supplyChainScanner = new SupplyChainScanner();
-          const supplyChainFindings = await supplyChainScanner.scan(target);
-          
-          // Convert SupplyChainScanner findings to our ScanResult format
-          scanResult.findings = supplyChainFindings.map(finding => ({
-            id: finding.id,
-            severity: finding.severity,
-            category: finding.category,
-            title: finding.title,
-            description: finding.description,
-            evidence: finding.evidence,
-            recommendation: finding.recommendation,
-            compliance_impact: finding.compliance_impact || []
-          }));
-          
-          // Update metrics
-          scanResult.metrics.total_checks = supplyChainFindings.length;
-          scanResult.metrics.failed_checks = supplyChainFindings.filter(f => f.severity === 'critical' || f.severity === 'high').length;
-          scanResult.metrics.warnings = supplyChainFindings.filter(f => f.severity === 'medium' || f.severity === 'low').length;
-          scanResult.metrics.passed_checks = Math.max(0, 30 - supplyChainFindings.length); // Assume 30 total checks
-          scanResult.metrics.resources_scanned = 1;
-          scanResult.metrics.scan_coverage = 100;
-          
-          await this.simulateScan(1000, scanId); // Additional processing time
-          break;
-        case 'compliance':
-          const { ComplianceScanner } = await import('../scanners/compliance-scanner');
-          const complianceScanner = new ComplianceScanner();
-          await complianceScanner.initialize();
-          const complianceFindings = await complianceScanner.scan(target);
-          
-          // Convert ComplianceScanner findings to our ScanResult format
-          scanResult.findings = complianceFindings.map(finding => ({
-            id: finding.id,
-            severity: finding.severity,
-            category: finding.category,
-            title: finding.title,
-            description: finding.description,
-            evidence: finding.evidence,
-            recommendation: finding.recommendation,
-            compliance_impact: finding.compliance_impact || []
-          }));
-          
-          // Update metrics
-          scanResult.metrics.total_checks = complianceFindings.length;
-          scanResult.metrics.failed_checks = complianceFindings.filter(f => f.severity === 'critical' || f.severity === 'high').length;
-          scanResult.metrics.warnings = complianceFindings.filter(f => f.severity === 'medium' || f.severity === 'low').length;
-          scanResult.metrics.passed_checks = Math.max(0, 25 - complianceFindings.length); // Assume 25 total checks
-          scanResult.metrics.resources_scanned = 1;
-          scanResult.metrics.scan_coverage = 100;
-          
-          await this.simulateScan(2000, scanId); // Additional processing time
-          break;
-        case 'comprehensive':
-          // await this.runComprehensiveScan(target);
-          await this.simulateScan(3000, scanId); // Simulate comprehensive scan
-          break;
+      // Route to appropriate scanner using configuration
+      const config = SCANNER_CONFIGS[target.type];
+      if (!config) {
+        throw new Error(`Unsupported scan type: ${target.type}`);
+      }
+
+      if (target.type === 'comprehensive') {
+        // Run comprehensive scan across all scanner types
+        await this.runComprehensiveScan(target, scanResult, scanId);
+      } else {
+        // Load scanner and execute scan
+        const scanner = await ScannerResultProcessor.loadScanner(config);
+        const findings = await scanner.scan(target);
+        
+        // Process findings and metrics using unified approach
+        scanResult.findings = ScannerResultProcessor.processFindings(findings);
+        scanResult.metrics = ScannerResultProcessor.calculateMetrics(scanResult.findings, config);
+        
+        // Additional processing time
+        await this.simulateScan(config.processingTime, scanId);
       }
 
       scanResult.status = 'completed';
       scanResult.duration = Date.now() - startTime;
       
-      console.log(`✅ Scan ${scanId} completed in ${scanResult.duration}ms`);
+      if (!this.isTestMode) {
+        console.log(`✅ Scan ${scanId} completed in ${scanResult.duration}ms`);
+      }
       
     } catch (error) {
-      console.error(`❌ Scan ${scanId} failed:`, error);
-      
       // Check if this was a cancellation
       if (error instanceof Error && error.message === 'Scan cancelled') {
         scanResult.status = 'cancelled';
+        // Only log cancellation messages in non-test mode to avoid confusing test output
+        if (!this.isTestMode) {
+          console.log(`🚫 Scan ${scanId} was cancelled`);
+        }
       } else {
+        if (!this.isTestMode) {
+          console.error(`❌ Scan ${scanId} failed:`, error);
+        }
         scanResult.status = 'failed';
       }
       
@@ -295,12 +211,87 @@ export class ZeroTrustScanner {
       if (scanId) {
         const scan = this.activeScans.get(scanId);
         if (!scan || scan.status === 'cancelled') {
+          // This is expected behavior when tests cancel scans
           throw new Error('Scan cancelled');
         }
       }
       
       // Wait 100ms before checking again
       await new Promise(resolve => setTimeout(resolve, 100));
+    }
+  }
+
+  /**
+   * Run comprehensive scan across all scanner types
+   */
+  private async runComprehensiveScan(target: ScanTarget, scanResult: ScanResult, scanId: string): Promise<void> {
+    const allFindings: SecurityFinding[] = [];
+    let totalChecks = 0;
+    let totalProcessingTime = 0;
+
+    // Run all scanner types except comprehensive
+    const scannerTypes = Object.keys(SCANNER_CONFIGS).filter(type => type !== 'comprehensive');
+    
+    if (!this.isTestMode) {
+      console.log(`🔍 Running comprehensive scan across ${scannerTypes.length} scanner types...`);
+    }
+    
+    for (const scannerType of scannerTypes) {
+      const config = SCANNER_CONFIGS[scannerType];
+      
+      try {
+        if (!this.isTestMode) {
+          console.log(`  📊 Running ${scannerType} scan...`);
+        }
+        
+        // Create sub-target for this scanner type
+        const subTarget = { ...target, type: scannerType as any };
+        
+        // Load and run scanner
+        const scanner = await ScannerResultProcessor.loadScanner(config);
+        const findings = await scanner.scan(subTarget);
+        
+        // Process findings
+        const processedFindings = ScannerResultProcessor.processFindings(findings);
+        allFindings.push(...processedFindings);
+        
+        totalChecks += config.totalChecks;
+        totalProcessingTime += config.processingTime;
+        
+        // Simulate processing time for this scanner
+        await this.simulateScan(Math.floor(config.processingTime * 0.3), scanId);
+        
+      } catch (error) {
+        if (!this.isTestMode) {
+          console.warn(`  ⚠️ Warning: ${scannerType} scan failed:`, error);
+        }
+        // Continue with other scanners even if one fails
+      }
+    }
+
+    // Aggregate results
+    scanResult.findings = allFindings;
+    
+    // Calculate comprehensive metrics
+    const failedChecks = allFindings.filter(f => 
+      f.severity === 'critical' || f.severity === 'high'
+    ).length;
+    
+    const warnings = allFindings.filter(f => 
+      f.severity === 'medium' || f.severity === 'low'
+    ).length;
+    
+    scanResult.metrics = {
+      total_checks: allFindings.length,
+      failed_checks: failedChecks,
+      warnings: warnings,
+      passed_checks: Math.max(0, totalChecks - allFindings.length),
+      resources_scanned: scannerTypes.length,
+      scan_coverage: Math.round((scannerTypes.length / Object.keys(SCANNER_CONFIGS).length) * 100)
+    };
+    
+    if (!this.isTestMode) {
+      console.log(`✅ Comprehensive scan completed: ${allFindings.length} findings across ${scannerTypes.length} scanners`);
     }
   }
 
@@ -329,13 +320,17 @@ export class ZeroTrustScanner {
    * Graceful shutdown
    */
   async shutdown(): Promise<void> {
-    console.log('🛑 Shutting down Zero-Trust Scanner...');
+    if (!this.isTestMode) {
+      console.log('🛑 Shutting down Zero-Trust Scanner...');
+    }
     
     // Cancel all active scans
     for (const scanId of this.activeScans.keys()) {
       await this.cancelScan(scanId);
     }
     
-    console.log('✅ Zero-Trust Scanner shutdown complete');
+    if (!this.isTestMode) {
+      console.log('✅ Zero-Trust Scanner shutdown complete');
+    }
   }
 }
