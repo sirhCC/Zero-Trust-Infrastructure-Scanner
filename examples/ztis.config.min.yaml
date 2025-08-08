@@ -1,0 +1,67 @@
+scanner:
+  parallelScans: 3
+  scanTimeout: 300000
+  retryAttempts: 3
+  outputDirectory: ./reports
+  reportFormats: [json, html]
+network:
+  defaultScanDepth: 3
+  includedNetworks: []
+  excludedNetworks: []
+  portScanEnabled: true
+  serviceScanEnabled: true
+  cloudProviders: []
+identity:
+  providers: []
+  privilegeThresholds:
+    low: 20
+    medium: 50
+    high: 80
+    critical: 95
+  includeServiceAccounts: true
+  analyzePermissionBoundaries: true
+supplyChain:
+  registries: []
+  packageManagers: [npm]
+  vulnerabilityDatabases: [nvd, snyk, github]
+  severityThreshold: medium
+  includeDevelopmentDependencies: false
+  licenseChecking: true
+compliance:
+  standards: []
+  reportingFormats: [html, pdf]
+  evidenceCollection: true
+  autoRemediation: false
+logging:
+  level: info
+  outputs: [console, file]
+  structuredLogging: true
+  retentionDays: 30
+  auditLogging: true
+server:
+  port: 3000
+  host: localhost
+  apiEnabled: true
+  webInterfaceEnabled: true
+  authentication:
+    enabled: false
+    type: jwt
+  rateLimit:
+    enabled: true
+    windowMs: 900000
+    maxRequests: 100
+security:
+  encryption:
+    algorithm: aes-256-gcm
+    keyLength: 256
+  dataRetention:
+    scanResults: 90
+    logs: 30
+    reports: 365
+  accessControl:
+    enabled: false
+    defaultRole: viewer
+    roles:
+      admin: [read, write, delete, configure]
+      operator: [read, write]
+      viewer: [read]
