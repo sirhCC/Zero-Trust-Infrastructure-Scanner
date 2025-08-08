@@ -1,0 +1,44 @@
+name: Manual CI (on-demand)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Test (coverage)
+        run: npm run test:coverage:ci
+        env:
+          ZTIS_LOGGING_LEVEL: info
+          ZTIS_SCANNER_TIMEOUT: '60000'
+          ZTIS_SCANNER_PARALLEL: '4'
+          ZTIS_SERVER_PORT: '4000'
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage/
+          if-no-files-found: warn
