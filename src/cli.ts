@@ -862,7 +862,15 @@ program
         .connection-status { padding: 0.5rem 1rem; border-radius: 4px; font-size: 0.9rem; margin-bottom: 1rem; }
         .connected { background: #065f46; color: #d1fae5; }
         .disconnected { background: #7f1d1d; color: #fed7d7; }
+    .controls { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1rem; align-items: center; }
+    .btn { background: #3b82f6; color: white; border: none; padding: 0.4rem 0.8rem; border-radius: 4px; cursor: pointer; }
+    .btn.secondary { background: #334155; }
+    .filters { display: flex; gap: 1rem; align-items: center; }
+    .filters label { display: flex; gap: 0.4rem; align-items: center; font-size: 0.9rem; }
+    canvas { background: #0b1324; border-radius: 6px; padding: 6px; }
     </style>
+  <!-- Lightweight charting via CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
     <div class="header">
@@ -874,6 +882,17 @@ program
         <div id="connection-status" class="connection-status disconnected">
             📡 Connecting to WebSocket monitor...
         </div>
+    <div class="controls">
+      <button id="pause-btn" class="btn">⏸️ Pause feed</button>
+      <button id="clear-btn" class="btn secondary">🧹 Clear feed</button>
+      <button id="download-btn" class="btn secondary">⬇️ Download JSON</button>
+      <div class="filters">
+        <span>Filter:</span>
+        <label><input type="checkbox" id="filter-critical" checked /> Critical/High</label>
+        <label><input type="checkbox" id="filter-warning" checked /> Medium</label>
+        <label><input type="checkbox" id="filter-info" checked /> Info</label>
+      </div>
+    </div>
         
         <div class="grid">
             <div class="card">
@@ -903,6 +922,25 @@ program
           <span class="metric-value" id="alerts-queued">0</span>
         </div>
             </div>
+            <div class="card">
+                <h3>📈 Live Trends</h3>
+                <div style="display:grid; gap: 1rem;">
+                  <div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.25rem;">
+                      <span>Total Findings (last scans)</span>
+                      <small id="trend-latest" style="color:#9ca3af;">n/a</small>
+                    </div>
+                    <canvas id="trendChart" height="120"></canvas>
+                  </div>
+                  <div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.25rem;">
+                      <span>Severity Mix</span>
+                      <small id="mix-latest" style="color:#9ca3af;">n/a</small>
+                    </div>
+                    <canvas id="mixChart" height="120"></canvas>
+                  </div>
+                </div>
+            </div>
             
             <div class="card">
                 <h3>🚨 Recent Events</h3>
@@ -920,6 +958,97 @@ program
         let ws;
         let eventCount = 0;
         let criticalCount = 0;
+    let paused = false;
+  const pendingEvents = [];
+  const capturedEvents = []; // recent events stored for export
+    const filters = { critical: true, warning: true, info: true };
+        
+    // Charts state
+    let trendChart, mixChart;
+    const trendLabels = [];
+    const trendData = [];
+    const mixData = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
+        
+    function initCharts() {
+      const trendCtx = document.getElementById('trendChart');
+      const mixCtx = document.getElementById('mixChart');
+      if (trendCtx) {
+        trendChart = new Chart(trendCtx, {
+          type: 'line',
+          data: {
+            labels: trendLabels,
+            datasets: [{
+              label: 'Findings',
+              data: trendData,
+              borderColor: '#3b82f6',
+              backgroundColor: 'rgba(59,130,246,0.2)',
+              tension: 0.2,
+              pointRadius: 0
+            }]
+          },
+          options: {
+            responsive: true,
+            plugins: { legend: { labels: { color: '#cbd5e1' } } },
+            scales: {
+              x: { ticks: { color: '#94a3b8' }, grid: { color: '#1f2937' } },
+              y: { ticks: { color: '#94a3b8' }, grid: { color: '#1f2937' } }
+            }
+          }
+        });
+      }
+      if (mixCtx) {
+        mixChart = new Chart(mixCtx, {
+          type: 'doughnut',
+          data: {
+            labels: ['Critical', 'High', 'Medium', 'Low', 'Info'],
+            datasets: [{
+              data: [0,0,0,0,0],
+              backgroundColor: ['#ef4444','#fb923c','#f59e0b','#22c55e','#3b82f6']
+            }]
+          },
+          options: { plugins: { legend: { labels: { color: '#cbd5e1' } } } }
+        });
+      }
+    }
+        
+    function updateTrend(total) {
+      const ts = new Date().toLocaleTimeString();
+      trendLabels.push(ts);
+      trendData.push(total);
+      if (trendLabels.length > 60) { trendLabels.shift(); trendData.shift(); }
+      if (trendChart) { trendChart.update('none'); }
+      const lbl = document.getElementById('trend-latest');
+      if (lbl) lbl.textContent = String(total);
+    }
+        
+    function updateMix(critical, high, medium, low, info) {
+      mixData.critical = critical;
+      mixData.high = high;
+      mixData.medium = medium;
+      mixData.low = low;
+      mixData.info = info;
+      if (mixChart) {
+        mixChart.data.datasets[0].data = [critical, high, medium, low, info];
+        mixChart.update('none');
+      }
+            const lbl = document.getElementById('mix-latest');
+            if (lbl) lbl.textContent = 'C:' + critical + ' H:' + high + ' M:' + medium + ' L:' + low + ' I:' + info;
+    }
+        
+    function applyFilters() {
+      const eventsContainer = document.getElementById('events');
+      if (!eventsContainer) return;
+      Array.from(eventsContainer.children).forEach(el => {
+        if (!el.classList) return;
+        if (el.classList.contains('critical')) {
+          el.style.display = filters.critical ? '' : 'none';
+        } else if (el.classList.contains('warning')) {
+          el.style.display = filters.warning ? '' : 'none';
+        } else if (el.classList.contains('info')) {
+          el.style.display = filters.info ? '' : 'none';
+        }
+      });
+    }
         
         function connect() {
             ws = new WebSocket('ws://localhost:${options.monitorPort}/ws');
@@ -980,6 +1109,15 @@ program
         if (typeof data.data.active_scans !== 'undefined') {
           document.getElementById('active-scans').textContent = data.data.active_scans;
         }
+        // Update charts
+        if (typeof data.data.findings_count !== 'undefined') {
+          updateTrend(data.data.findings_count);
+        }
+        const crit = data.data.critical_count ?? 0;
+        const high = data.data.high_count ?? 0;
+        const medium = data.data.medium_count ?? 0;
+        // low/info not provided by metric payload, estimate as 0 (chart remains partial)
+        updateMix(crit, high, medium, 0, 0);
       }
             
             // Add event to list
@@ -995,13 +1133,24 @@ program
                 eventClass = 'warning';
             }
             
-            eventDiv.className = 'event ' + eventClass;
-            eventDiv.innerHTML = \`
-        <div>\${data.type}: \${data.message || JSON.stringify(data.data)}</div>
-                <div class="timestamp">\${new Date(data.timestamp).toLocaleString()}</div>
-            \`;
+      eventDiv.className = 'event ' + eventClass;
+      eventDiv.innerHTML = '\n                <div>' + data.type + ': ' + (data.message || JSON.stringify(data.data)) + '</div>\n                <div class="timestamp">' + new Date(data.timestamp).toLocaleString() + '</div>\n            ';
             
-            eventsContainer.insertBefore(eventDiv, eventsContainer.firstChild);
+      // save lightweight event for export
+      capturedEvents.unshift({
+        type: data.type,
+        severity: data.severity || 'info',
+        timestamp: data.timestamp,
+        target: data.target || 'system',
+        data: data.data || null
+      });
+      if (capturedEvents.length > 200) capturedEvents.pop();
+      if (paused) {
+        pendingEvents.push(eventDiv);
+      } else {
+        eventsContainer.insertBefore(eventDiv, eventsContainer.firstChild);
+        applyFilters();
+      }
             
             // Keep only last 50 events
             while (eventsContainer.children.length > 50) {
@@ -1011,6 +1160,48 @@ program
         
         // Start connection
         connect();
+    initCharts();
+        
+    // Wire controls
+    document.getElementById('pause-btn').addEventListener('click', () => {
+      paused = !paused;
+      const btn = document.getElementById('pause-btn');
+      if (paused) {
+        btn.textContent = '▶️ Resume feed';
+        btn.classList.add('secondary');
+      } else {
+        btn.textContent = '⏸️ Pause feed';
+        btn.classList.remove('secondary');
+        const eventsContainer = document.getElementById('events');
+        while (pendingEvents.length) {
+          const el = pendingEvents.shift();
+          eventsContainer.insertBefore(el, eventsContainer.firstChild);
+        }
+        applyFilters();
+      }
+    });
+    document.getElementById('filter-critical').addEventListener('change', (e) => { filters.critical = e.target.checked; applyFilters(); });
+    document.getElementById('filter-warning').addEventListener('change', (e) => { filters.warning = e.target.checked; applyFilters(); });
+    document.getElementById('filter-info').addEventListener('change', (e) => { filters.info = e.target.checked; applyFilters(); });
+    document.getElementById('clear-btn').addEventListener('click', () => {
+      const eventsContainer = document.getElementById('events');
+      while (eventsContainer.firstChild) eventsContainer.removeChild(eventsContainer.firstChild);
+      capturedEvents.length = 0;
+      eventCount = 0; criticalCount = 0;
+      document.getElementById('total-events').textContent = '0';
+      document.getElementById('critical-alerts').textContent = '0';
+    });
+    document.getElementById('download-btn').addEventListener('click', () => {
+      const blob = new Blob([JSON.stringify(capturedEvents, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'events-' + new Date().toISOString().replace(/[:.]/g,'-') + '.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    });
     </script>
 </body>
 </html>`;
