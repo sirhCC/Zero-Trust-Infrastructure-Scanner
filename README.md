@@ -115,7 +115,7 @@ Minimal JSON example:
 }
 ```
 
-Ready-to-use samples are in `examples/`:
+Ready-to-use samples are in `examples/` (see `examples/README.md`):
 
 - `examples/ztis.config.min.json`
 - `examples/ztis.config.min.yaml`
