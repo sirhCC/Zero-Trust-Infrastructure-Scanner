@@ -606,7 +606,7 @@ program
     
     try {
       // Simple HTTP server for dashboard
-      const http = require('http');
+      const http = await import('http');
       
       const dashboardHtml = `
 <!DOCTYPE html>
@@ -761,7 +761,7 @@ program
 </body>
 </html>`;
       
-      const server = http.createServer((_req: any, res: any) => {
+  const server = http.createServer((_req: any, res: any) => {
         res.writeHead(200, { 'Content-Type': 'text/html' });
         res.end(dashboardHtml);
       });
@@ -846,10 +846,12 @@ program.addCommand(mlRiskCommands);
 
 // Error handling
 program.exitOverride((err) => {
-  if (err.code === 'commander.version') {
-    process.exit(0);
-  }
-  if (err.code === 'commander.help') {
+  // Handle help/version exits gracefully
+  if (
+    err.code === 'commander.version' ||
+    err.code === 'commander.help' ||
+    err.code === 'commander.helpDisplayed'
+  ) {
     process.exit(0);
   }
   console.error(chalk.red('❌ Command failed:'), err.message);
