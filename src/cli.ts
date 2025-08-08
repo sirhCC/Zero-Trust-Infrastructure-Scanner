@@ -44,6 +44,13 @@ program
     console.log(chalk.gray('Target:'), options.target || 'Auto-detect');
     
     try {
+  // Load configuration
+  const { ConfigManager } = await import('./config/config-manager');
+  const cfgMgr = ConfigManager.getInstance();
+  const rootOpts = program.opts();
+  await cfgMgr.initialize(rootOpts.config || './ztis.config.json');
+  const cfg = cfgMgr.getConfig();
+
       // Import and initialize scanner
       const { ZeroTrustScanner } = await import('./core/scanner');
   const scanner = new ZeroTrustScanner();
@@ -61,15 +68,13 @@ program
         }
       };
       
-      console.log(chalk.yellow('🚀 Starting network scan...'));
-      const rootOpts = program.opts();
-      const timeoutMs = rootOpts.timeout ? parseInt(rootOpts.timeout) : undefined;
+      const timeoutMsArg = rootOpts.timeout ? parseInt(rootOpts.timeout) : undefined;
       const scanOpts: { signal?: AbortSignal; timeoutMs?: number } = {};
-      if (typeof timeoutMs === 'number' && !Number.isNaN(timeoutMs)) {
-        scanOpts.timeoutMs = timeoutMs;
+      if (typeof timeoutMsArg === 'number' && !Number.isNaN(timeoutMsArg)) {
+        scanOpts.timeoutMs = timeoutMsArg;
+      } else if (cfg?.scanner?.scanTimeout) {
+        scanOpts.timeoutMs = cfg.scanner.scanTimeout;
       }
-      const controller = scanOpts.timeoutMs ? new AbortController() : undefined;
-      if (controller) scanOpts.signal = controller.signal;
       const result = await scanner.scan(target, scanOpts);
       
       // Display results
@@ -122,6 +127,13 @@ program
     console.log(chalk.gray('Provider:'), options.provider || 'Auto-detect');
     
     try {
+  // Load configuration
+  const { ConfigManager } = await import('./config/config-manager');
+  const cfgMgr = ConfigManager.getInstance();
+  const rootOpts = program.opts();
+  await cfgMgr.initialize(rootOpts.config || './ztis.config.json');
+  const cfg = cfgMgr.getConfig();
+
       // Import and initialize scanner
       const { ZeroTrustScanner } = await import('./core/scanner');
   const scanner = new ZeroTrustScanner();
@@ -143,15 +155,13 @@ program
         }
       };
       
-      console.log(chalk.yellow('🚀 Starting identity scan...'));
-      const rootOpts = program.opts();
-      const timeoutMs = rootOpts.timeout ? parseInt(rootOpts.timeout) : undefined;
+      const timeoutMsArg = rootOpts.timeout ? parseInt(rootOpts.timeout) : undefined;
       const scanOpts: { signal?: AbortSignal; timeoutMs?: number } = {};
-      if (typeof timeoutMs === 'number' && !Number.isNaN(timeoutMs)) {
-        scanOpts.timeoutMs = timeoutMs;
+      if (typeof timeoutMsArg === 'number' && !Number.isNaN(timeoutMsArg)) {
+        scanOpts.timeoutMs = timeoutMsArg;
+      } else if (cfg?.scanner?.scanTimeout) {
+        scanOpts.timeoutMs = cfg.scanner.scanTimeout;
       }
-      const controller = scanOpts.timeoutMs ? new AbortController() : undefined;
-      if (controller) scanOpts.signal = controller.signal;
       const result = await scanner.scan(target, scanOpts);
       
       // Display results
@@ -221,6 +231,13 @@ program
     console.log(chalk.gray('Target:'), options.image || options.file || 'Current directory');
     
     try {
+  // Load configuration
+  const { ConfigManager } = await import('./config/config-manager');
+  const cfgMgr = ConfigManager.getInstance();
+  const rootOpts = program.opts();
+  await cfgMgr.initialize(rootOpts.config || './ztis.config.json');
+  const cfg = cfgMgr.getConfig();
+
       // Import and initialize scanner
       const { ZeroTrustScanner } = await import('./core/scanner');
   const scanner = new ZeroTrustScanner();
@@ -243,15 +260,13 @@ program
         }
       };
       
-      console.log(chalk.yellow('🚀 Starting supply chain scan...'));
-      const rootOpts = program.opts();
-      const timeoutMs = rootOpts.timeout ? parseInt(rootOpts.timeout) : undefined;
+      const timeoutMsArg = rootOpts.timeout ? parseInt(rootOpts.timeout) : undefined;
       const scanOpts: { signal?: AbortSignal; timeoutMs?: number } = {};
-      if (typeof timeoutMs === 'number' && !Number.isNaN(timeoutMs)) {
-        scanOpts.timeoutMs = timeoutMs;
+      if (typeof timeoutMsArg === 'number' && !Number.isNaN(timeoutMsArg)) {
+        scanOpts.timeoutMs = timeoutMsArg;
+      } else if (cfg?.scanner?.scanTimeout) {
+        scanOpts.timeoutMs = cfg.scanner.scanTimeout;
       }
-      const controller = scanOpts.timeoutMs ? new AbortController() : undefined;
-      if (controller) scanOpts.signal = controller.signal;
       const result = await scanner.scan(target, scanOpts);
       
       // Display results
@@ -342,6 +357,13 @@ program
     console.log(chalk.gray('Standards:'), options.standard);
     
     try {
+  // Load configuration
+  const { ConfigManager } = await import('./config/config-manager');
+  const cfgMgr = ConfigManager.getInstance();
+  const rootOpts = program.opts();
+  await cfgMgr.initialize(rootOpts.config || './ztis.config.json');
+  const cfg = cfgMgr.getConfig();
+
       // Import and initialize scanner
       const { ZeroTrustScanner } = await import('./core/scanner');
   const scanner = new ZeroTrustScanner();
@@ -365,15 +387,13 @@ program
         }
       };
       
-      console.log(chalk.yellow('🚀 Starting compliance scan...'));
-      const rootOpts = program.opts();
-      const timeoutMs = rootOpts.timeout ? parseInt(rootOpts.timeout) : undefined;
+      const timeoutMsArg = rootOpts.timeout ? parseInt(rootOpts.timeout) : undefined;
       const scanOpts: { signal?: AbortSignal; timeoutMs?: number } = {};
-      if (typeof timeoutMs === 'number' && !Number.isNaN(timeoutMs)) {
-        scanOpts.timeoutMs = timeoutMs;
+      if (typeof timeoutMsArg === 'number' && !Number.isNaN(timeoutMsArg)) {
+        scanOpts.timeoutMs = timeoutMsArg;
+      } else if (cfg?.scanner?.scanTimeout) {
+        scanOpts.timeoutMs = cfg.scanner.scanTimeout;
       }
-      const controller = scanOpts.timeoutMs ? new AbortController() : undefined;
-      if (controller) scanOpts.signal = controller.signal;
       const result = await scanner.scan(target, scanOpts);
       
       // Display results
