@@ -7,6 +7,9 @@
 
 import { Command } from 'commander';
 import chalk from 'chalk';
+import * as YAML from 'yaml';
+import * as fs from 'fs';
+import * as path from 'path';
 // Importing version directly from package.json can be problematic when bundling; guard and fallback to env
 let version: string = '0.0.0';
 try {
@@ -38,12 +41,24 @@ program
   .option('--no-color', 'Disable colored output');
 
 // Ensure verbose flag affects logging before any command action runs
-program.hook('preAction', () => {
-  const rootOpts = program.opts();
+program.hook('preAction', (_thisCmd, actionCmd) => {
+  // Prefer merged options so globals work before or after subcommand
+  const rootOpts = (actionCmd as any)?.optsWithGlobals?.() || program.opts();
   if (rootOpts?.verbose) {
     process.env.ZTIS_LOGGING_LEVEL = 'debug';
   }
 });
+
+// Helpers
+const SEVERITY_ORDER = ['low', 'medium', 'high', 'critical'] as const;
+type Severity = typeof SEVERITY_ORDER[number];
+function shouldFailBySeverity(findings: Array<{ severity: Severity }>, level?: string): boolean {
+  if (!level) return false;
+  const idx = SEVERITY_ORDER.indexOf(level as Severity);
+  if (idx < 0) return false;
+  const threshold = new Set(SEVERITY_ORDER.slice(idx));
+  return findings.some((f) => threshold.has(f.severity));
+}
 
 /**
  * Network Micro-Segmentation Command
@@ -56,19 +71,22 @@ program
   .option('--k8s-namespace <namespace>', 'Kubernetes namespace to scan')
   .option('--cloud-provider <provider>', 'Cloud provider (aws|azure|gcp)')
   .option('--scan-depth <level>', 'Scan depth level (1-5)', '3')
+  .option('--out-file <file>', 'Write command output to file (respects --output)')
+  .option('--fail-on <severity>', 'Exit non-zero if findings at/above severity exist (low|medium|high|critical)')
   .option('--export-report <file>', 'Export compliance report to file (json or csv based on extension)')
   .option('--save-baseline <file>', 'Save current scan as baseline to file')
   .option('--baseline <file>', 'Compare against baseline file and print drift')
   .option('--fail-on-drift <severity>', 'Fail (exit 1) if drift >= 1 at or above severity (low|medium|high|critical)')
-  .action(async (options) => {
-    console.log(chalk.blue('🔍 Network Micro-Segmentation Analysis'));
-    console.log(chalk.gray('Target:'), options.target || 'Auto-detect');
-    
+  .action(async (options, cmd) => {
     try {
   // Load configuration
   const { ConfigManager } = await import('./config/config-manager');
   const cfgMgr = ConfigManager.getInstance();
-  const rootOpts = program.opts();
+  const rootOpts = (cmd as any)?.optsWithGlobals?.() || program.opts();
+  if (rootOpts.output === 'table') {
+    console.log(chalk.blue('🔍 Network Micro-Segmentation Analysis'));
+    console.log(chalk.gray('Target:'), options.target || 'Auto-detect');
+  }
   await cfgMgr.initialize(rootOpts.config || './ztis.config.json');
   const cfg = cfgMgr.getConfig();
 
@@ -96,7 +114,7 @@ program
       } else if (cfg?.scanner?.scanTimeout) {
         scanOpts.timeoutMs = cfg.scanner.scanTimeout;
       }
-      const result = await scanner.scan(target, scanOpts);
+  const result = await scanner.scan(target, scanOpts);
 
       // Export report if requested
       if (options.exportReport) {
@@ -136,13 +154,29 @@ program
         }
       }
       
-      // Display results
-      console.log(chalk.green(`✅ Scan completed in ${result.duration}ms`));
-      console.log(chalk.gray(`Scan ID: ${result.id}`));
-      console.log(chalk.gray(`Findings: ${result.findings.length}`));
+      // Output formatting (json|yaml|table)
+      if (rootOpts.output && rootOpts.output !== 'table') {
+        const payload = rootOpts.output === 'yaml' ? YAML.stringify(result) : JSON.stringify(result, null, 2);
+        if (options.outFile) {
+          const dir = path.dirname(options.outFile);
+          if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+          fs.writeFileSync(options.outFile, payload, 'utf8');
+          // Provide a tiny confirmation to aid CI/debugging
+          if (rootOpts.output !== 'table') {
+            console.log(chalk.gray(`Output written to ${options.outFile}`));
+          }
+        } else {
+          console.log(payload);
+        }
+      } else {
+        // Display human-readable summary
+        console.log(chalk.green(`✅ Scan completed in ${result.duration}ms`));
+        console.log(chalk.gray(`Scan ID: ${result.id}`));
+        console.log(chalk.gray(`Findings: ${result.findings.length}`));
+      }
       
-      // Display findings summary
-      if (result.findings.length > 0) {
+  // Display findings summary (table mode only)
+  if (rootOpts.output === 'table' && result.findings.length > 0) {
         console.log('\n' + chalk.bold('Security Findings:'));
         result.findings.forEach((finding, index) => {
           const severityColor = {
@@ -160,8 +194,14 @@ program
           }
           console.log('');
         });
-      } else {
+      } else if (rootOpts.output === 'table') {
         console.log(chalk.green('\n✅ No security issues found!'));
+      }
+
+      // Fail on severity threshold if requested
+      if (shouldFailBySeverity(result.findings as any, options.failOn)) {
+        console.error(chalk.red('Failing due to severity threshold.'));
+        process.exit(1);
       }
       
     } catch (error) {
