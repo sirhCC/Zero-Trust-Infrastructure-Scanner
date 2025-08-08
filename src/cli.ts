@@ -685,6 +685,7 @@ program
   .option('-p, --port <port>', 'WebSocket server port', '3001')
   .option('-i, --interval <seconds>', 'Monitoring interval in seconds', '30')
   .option('-t, --targets <targets>', 'Comma-separated list of targets to monitor')
+  .option('--ws-token <token>', 'WebSocket auth token for clients')
   .option('--webhooks <urls>', 'Comma-separated webhook URLs for alerts')
   .option('--slack-webhook <url>', 'Slack webhook URL for notifications')
   .option('--teams-webhook <url>', 'Microsoft Teams webhook URL')
@@ -773,7 +774,8 @@ program
         websocket: {
           port: parseInt(options.port),
           path: '/ws',
-          authentication: false,
+          authentication: Boolean(options.wsToken),
+          token: options.wsToken,
           max_connections: 100
         },
         change_detection: {
@@ -790,7 +792,51 @@ program
       console.log(chalk.green('✅ Real-time monitor initialized'));
       console.log(chalk.yellow('🔄 Starting continuous monitoring...'));
       
-      await monitor.start();
+  await monitor.start();
+
+      // Minimal status API server for dashboard snapshot
+      const httpStatus = await import('http');
+      const statusServer = httpStatus.createServer((req: any, res: any) => {
+        const allowHeaders = 'Content-Type, X-ZTIS-Token';
+        const allowOrigin = '*';
+        const allowMethods = 'GET, OPTIONS';
+        try {
+          if (req.method === 'OPTIONS') {
+            res.writeHead(204, {
+              'Access-Control-Allow-Origin': allowOrigin,
+              'Access-Control-Allow-Methods': allowMethods,
+              'Access-Control-Allow-Headers': allowHeaders,
+            });
+            res.end();
+            return;
+          }
+          const url = new URL(req.url || '/', `http://localhost:${parseInt(options.port) + 1}`);
+          if (url.pathname === '/api/status') {
+            const stats = monitor.getMonitoringStats();
+            res.writeHead(200, {
+              'Content-Type': 'application/json',
+              'Cache-Control': 'no-cache',
+              'Access-Control-Allow-Origin': allowOrigin,
+            });
+            res.end(JSON.stringify({ ok: true, stats }));
+            return;
+          }
+          // 404 otherwise
+          res.writeHead(404, {
+            'Access-Control-Allow-Origin': allowOrigin,
+          });
+          res.end('Not found');
+        } catch (e: any) {
+          res.writeHead(500, {
+            'Access-Control-Allow-Origin': allowOrigin,
+          });
+          res.end('Error');
+        }
+      });
+      const statusPort = parseInt(options.port) + 1;
+      statusServer.listen(statusPort, () => {
+        console.log(chalk.blue(`📊 Status API listening on http://localhost:${statusPort}/api/status`));
+      });
       
       console.log(chalk.green('🚀 Monitoring active!'));
       console.log(chalk.blue(`📡 WebSocket server listening on port ${options.port}`));
@@ -802,7 +848,8 @@ program
       const shutdown = async () => {
         console.log(chalk.yellow('\n🛑 Shutting down monitor...'));
         await monitor.stop();
-        console.log(chalk.green('✅ Monitor stopped gracefully'));
+  try { statusServer.close(); } catch { /* ignore close error */ }
+  console.log(chalk.green('✅ Monitor stopped gracefully'));
         process.exit(0);
       };
       
@@ -825,6 +872,7 @@ program
   .description('Launch web dashboard for real-time monitoring')
   .option('-p, --port <port>', 'Dashboard port', '3000')
   .option('--monitor-port <port>', 'WebSocket monitor port to connect to', '3001')
+  .option('--ws-token <token>', 'WebSocket auth token to use when connecting')
   .action(async (options) => {
     console.log(chalk.blue('🌐 Starting Web Dashboard'));
     console.log(chalk.gray('Dashboard Port:'), options.port);
@@ -1050,8 +1098,24 @@ program
       });
     }
         
-        function connect() {
-            ws = new WebSocket('ws://localhost:${options.monitorPort}/ws');
+    async function hydrate() {
+      try {
+        const snapshotRes = await fetch('http://localhost:${parseInt(options.monitorPort)+1}/api/status');
+        if (snapshotRes.ok) {
+          const snap = await snapshotRes.json();
+          if (snap && snap.stats) {
+            document.getElementById('target-count').textContent = snap.stats.targets || 0;
+            document.getElementById('active-scans').textContent = snap.stats.active_scans || 0;
+            document.getElementById('connected-clients').textContent = snap.stats.connected_clients || 0;
+            document.getElementById('alerts-queued').textContent = snap.stats.alerts_queued || 0;
+          }
+        }
+      } catch (e) { /* ignore hydrate errors */ }
+    }
+
+    function connect() {
+      const url = 'ws://localhost:${options.monitorPort}/ws' + (${options.wsToken ? '"?token=' + encodeURIComponent("${options.wsToken}") + '"' : "''"});
+      ws = new WebSocket(url);
             
             ws.onopen = function() {
                 document.getElementById('connection-status').className = 'connection-status connected';
@@ -1158,8 +1222,9 @@ program
             }
         }
         
-        // Start connection
-        connect();
+  // Hydrate and start connection
+  hydrate();
+  connect();
     initCharts();
         
     // Wire controls
@@ -1206,9 +1271,29 @@ program
 </body>
 </html>`;
       
-  const server = http.createServer((_req: any, res: any) => {
-        res.writeHead(200, { 'Content-Type': 'text/html' });
-        res.end(dashboardHtml);
+      const server = http.createServer(async (_req: any, res: any) => {
+        try {
+          const url = new URL(_req.url || '/', `http://localhost:${options.port}`);
+          if (url.pathname === '/api/status') {
+            // Proxy to monitor status API (monitorPort + 1)
+            try {
+              const target = `http://localhost:${parseInt(options.monitorPort) + 1}/api/status`;
+              const resp = await fetch(target);
+              const body = await resp.text();
+              res.writeHead(resp.status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' });
+              res.end(body);
+            } catch (e) {
+              res.writeHead(502, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ ok: false, error: 'Monitor status API unavailable' }));
+            }
+            return;
+          }
+          res.writeHead(200, { 'Content-Type': 'text/html' });
+          res.end(dashboardHtml);
+        } catch {
+          res.writeHead(500);
+          res.end('Server error');
+        }
       });
       
       server.listen(parseInt(options.port), () => {

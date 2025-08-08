@@ -60,6 +60,8 @@ export interface WebSocketConfig {
   path: string;
   authentication: boolean;
   max_connections: number;
+  token?: string; // optional static token for simple auth
+  token_header?: string; // optional header name for token (default: x-ztis-token)
 }
 
 export interface ChangeDetectionConfig {
@@ -262,6 +264,31 @@ export class RealTimeMonitor extends EventEmitter {
 
     this.wsServer.on('connection', (ws: WebSocket, request: any) => {
       const clientIp = request.socket.remoteAddress;
+      // Simple token auth if enabled
+      if (this.config.websocket.authentication) {
+        try {
+          const headerName = (this.config.websocket.token_header || 'x-ztis-token').toLowerCase();
+          const headerToken = (request.headers && (request.headers[headerName] as string)) || '';
+          let urlToken = '';
+          try {
+            const fullUrl = new URL(request.url || '/', 'http://localhost');
+            urlToken = fullUrl.searchParams.get('token') || '';
+          } catch { /* ignore URL parse errors */ }
+
+          const expected = this.config.websocket.token || process.env.ZTIS_WS_TOKEN || '';
+          const provided = headerToken || urlToken;
+          if (!expected || provided !== expected) {
+            try { ws.close(1008, 'Invalid or missing auth token'); } catch { /* ignore close error */ }
+            logger.warn(`❌ WebSocket auth failed for ${clientIp}`);
+            return;
+          }
+        } catch (e) {
+          try { ws.close(1008, 'Auth error'); } catch { /* ignore close error */ }
+          logger.error('WebSocket auth processing failed', e);
+          return;
+        }
+      }
+
       logger.info(`🔌 WebSocket client connected from ${clientIp}`);
       
       // Add to connected clients
