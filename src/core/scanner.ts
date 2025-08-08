@@ -56,10 +56,12 @@ export class ZeroTrustScanner {
   private activeScans: Map<string, ScanResult> = new Map();
   private scanHistory: ScanResult[] = [];
   private isTestMode: boolean = false;
+  private quiet: boolean = false;
 
-  constructor(testMode: boolean = false) {
+  constructor(testMode: boolean = false, quiet: boolean = false) {
     // Initialize with basic configuration
     this.isTestMode = testMode;
+    this.quiet = quiet;
     this.initializeScanners();
   }
 
@@ -78,12 +80,12 @@ export class ZeroTrustScanner {
    * Initialize the scanner with all modules
    */
   async initialize(): Promise<void> {
-    console.log('🔧 Initializing Zero-Trust Scanner...');
+  if (!this.quiet) console.log('🔧 Initializing Zero-Trust Scanner...');
     
     // Scanner modules are loaded dynamically as needed
-    console.log(`📊 Registered ${this.scanners.size} scanner types`);
+  if (!this.quiet) console.log(`📊 Registered ${this.scanners.size} scanner types`);
     
-    console.log('✅ Scanner initialization complete');
+  if (!this.quiet) console.log('✅ Scanner initialization complete');
   }
 
   /**
@@ -105,7 +107,7 @@ export class ZeroTrustScanner {
     let aborted = false;
     let timeoutHandle: NodeJS.Timeout | null = null;
     const onAbort = () => { aborted = true; };
-    if (opts?.signal) {
+  if (opts?.signal) {
       if (opts.signal.aborted) aborted = true;
       else opts.signal.addEventListener('abort', onAbort, { once: true });
     }
@@ -133,7 +135,7 @@ export class ZeroTrustScanner {
     this.activeScans.set(scanId, scanResult);
 
     try {
-  if (!this.isTestMode) {
+  if (!this.isTestMode && !this.quiet) {
         console.log(`🔍 Starting ${target.type} scan for: ${target.target}`);
       }
       
@@ -163,7 +165,7 @@ export class ZeroTrustScanner {
       scanResult.status = 'completed';
       scanResult.duration = Date.now() - startTime;
       
-      if (!this.isTestMode) {
+      if (!this.isTestMode && !this.quiet) {
         console.log(`✅ Scan ${scanId} completed in ${scanResult.duration}ms`);
       }
       
@@ -172,11 +174,11 @@ export class ZeroTrustScanner {
       if (error instanceof Error && error.message === 'Scan cancelled') {
         scanResult.status = 'cancelled';
         // Only log cancellation messages in non-test mode to avoid confusing test output
-        if (!this.isTestMode) {
+  if (!this.isTestMode && !this.quiet) {
           console.log(`🚫 Scan ${scanId} was cancelled`);
         }
       } else {
-        if (!this.isTestMode) {
+  if (!this.isTestMode && !this.quiet) {
           console.error(`❌ Scan ${scanId} failed:`, error);
         }
         scanResult.status = 'failed';
@@ -405,7 +407,7 @@ export class ZeroTrustScanner {
    * Graceful shutdown
    */
   async shutdown(): Promise<void> {
-    if (!this.isTestMode) {
+  if (!this.isTestMode && !this.quiet) {
       console.log('🛑 Shutting down Zero-Trust Scanner...');
     }
     
@@ -414,7 +416,7 @@ export class ZeroTrustScanner {
       await this.cancelScan(scanId);
     }
     
-    if (!this.isTestMode) {
+  if (!this.isTestMode && !this.quiet) {
       console.log('✅ Zero-Trust Scanner shutdown complete');
     }
   }
