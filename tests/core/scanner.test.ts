@@ -154,8 +154,8 @@ describe('ZeroTrustScanner', () => {
       };
 
       // Start multiple scans
-      scanner.scan(target);
-      scanner.scan({ ...target, target: 'pci' });
+  const scanPromise1 = scanner.scan(target);
+  const scanPromise2 = scanner.scan({ ...target, target: 'pci' });
       
       // Wait a moment for scans to start
       await new Promise(resolve => setTimeout(resolve, 100));
@@ -166,6 +166,9 @@ describe('ZeroTrustScanner', () => {
       await scanner.shutdown();
       
       expect(scanner.getActiveScans().length).toBe(0);
+
+  // Ensure any in-flight scan promises have settled to avoid open handles
+  await Promise.allSettled([scanPromise1, scanPromise2]);
     });
   });
 });
