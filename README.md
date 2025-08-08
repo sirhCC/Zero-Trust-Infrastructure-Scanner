@@ -1,69 +1,176 @@
-# 🛡️ Zero-Trust Infrastructure Scanner
+# 🛡️ Zero‑Trust Infrastructure Scanner
 
-<div align="center">
+Enterprise-grade security scanning for networks, identities, supply chains, and compliance.
 
-![Zero-Trust Banner](https://img.shields.io/badge/Zero--Trust-Infrastructure%20Scanner-blue?style=for-the-badge&logo=shield)
-![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue?style=flat-square&logo=typescript)
-![Enterprise Grade](https://img.shields.io/badge/Enterprise-Grade-gold?style=flat-square)
+[![CI](https://img.shields.io/github/actions/workflow/status/sirhCC/Zero-Trust-Infrastructure-Scanner/ci.yml?branch=main&label=CI&logo=github)](https://github.com/sirhCC/Zero-Trust-Infrastructure-Scanner/actions/workflows/ci.yml)
+![Node](https://img.shields.io/badge/Node-%3E%3D18-3C873A?logo=node.js)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript)
+![License](https://img.shields.io/badge/License-MIT-blue)
 
-**Enterprise-grade security scanning platform for modern cloud infrastructure**
+## ✨ Features
 
-</div>
+- 🔍 Network micro‑segmentation analysis
+- 👤 Identity permission mining (over‑privilege detection)
+- 📦 Supply chain vulnerability scanning (images, deps)
+- 📋 Compliance automation (SOC2, PCI, HIPAA, ISO27001)
+- 📡 Real‑time monitoring + live web dashboard
+- 🧠 Behavioral/ML risk scoring (experimental modules)
+- ⚙️ Strong config validation (Joi for defaults + Ajv JSON Schema)
+- 🧪 Jest test suite, TypeScript build, and GitHub Actions CI
 
-## ⚡ What It Does
+## 🚀 Quick start
 
-Comprehensive zero-trust security scanning across your entire infrastructure:
-
-- 🔍 **Network Security** - Analyze network policies and segmentation
-- 👤 **Identity Management** - Detect over-privileged accounts and permissions
-- 📦 **Supply Chain** - Scan containers and dependencies for vulnerabilities
-- 📋 **Compliance** - Automated SOC2, PCI, HIPAA compliance checking
-- 📡 **Real-Time Monitoring** - Live security monitoring with web dashboard
-- 🧠 **Behavioral Analysis** - ML-powered anomaly detection
-
-## 🚀 Quick Start
+Prereqs: Node.js >= 18
 
 ```bash
-# Install
+# Clone & install
 git clone https://github.com/sirhCC/Zero-Trust-Infrastructure-Scanner.git
 cd Zero-Trust-Infrastructure-Scanner
-npm install && npm run build
+npm ci
 
-# Run scans
-npm run scan-all                    # Complete security scan
-npm run scan:network                # Network analysis
-npm run scan:identity               # Identity permissions
-npm run scan:supply-chain           # Supply chain analysis
-npm run scan:compliance            # Compliance check
+# Build
+npm run build
 
-# Real-time monitoring & dashboard
-npm run monitor -- --targets localhost
-npm run dashboard -- --port 3000    # Web dashboard at http://localhost:3000
+# Show CLI help
+node dist/cli.js --help
+
+# Or use package scripts (dev-friendly)
+npm run scan:network -- --help
 ```
 
-## � Documentation
+Common commands:
 
-**� [Complete Documentation & Guides](https://github.com/sirhCC/Zero-Trust-Infrastructure-Scanner/wiki)**
+```bash
+# One‑shot "scan everything" (placeholder implementation)
+npm run scan-all
 
-Everything you need is in the Wiki:
-- Detailed installation and configuration
-- Advanced features and enterprise deployment
-- Real-time monitoring setup
-- Behavioral analysis configuration
-- API integration and customization
+# Targeted scans
+npm run scan:network -- --scan-depth 3 --target 10.0.0.0/16
+npm run scan:identity -- --provider aws-iam
+npm run scan:supply-chain -- --image alpine:3.19
+npm run scan:compliance -- --standard soc2
 
-## 🆘 Support
+# Global timeout (applies to all subcommands)
+node dist/cli.js network --timeout 10000
+```
 
-- 📖 **[Wiki Documentation](https://github.com/sirhCC/Zero-Trust-Infrastructure-Scanner/wiki)** - Complete guides and tutorials
-- 🐛 **[Issues](https://github.com/sirhCC/Zero-Trust-Infrastructure-Scanner/issues)** - Bug reports and feature requests
-- 💬 **[Discussions](https://github.com/sirhCC/Zero-Trust-Infrastructure-Scanner/discussions)** - Community help and questions
+Dashboard + Monitor:
+
+```bash
+# Real‑time monitoring (WebSocket)
+npm run monitor -- --port 3001 --interval 30 --targets localhost
+
+# Live dashboard (HTML)
+npm run dashboard -- --port 3000 --monitor-port 3001
+# Visit: http://localhost:3000
+```
+
+## ⚙️ Configuration
+
+Config file default: `./ztis.config.json` (YAML also supported). Validation uses:
+
+- Joi (sets sane defaults)
+- Ajv + `src/config/ztis.schema.json` (enforces structure)
+
+CLI helpers:
+
+```bash
+# Create a default config
+node dist/cli.js config --init -c ./ztis.config.json
+
+# Validate current config (Joi + Ajv)
+node dist/cli.js config --validate -c ./ztis.config.json
+
+# Show effective config (json|yaml)
+node dist/cli.js config --show -c ./ztis.config.json --output yaml
+```
+
+Minimal JSON example:
+
+```json
+{
+	"scanner": { "parallelScans": 3, "scanTimeout": 300000, "retryAttempts": 3 },
+	"network": { "defaultScanDepth": 3 },
+	"identity": { "providers": [] },
+	"supplyChain": { "packageManagers": ["npm"], "severityThreshold": "medium" },
+	"compliance": { "standards": [] },
+	"logging": { "level": "info", "outputs": ["console", "file"], "retentionDays": 30 },
+	"server": { "port": 3000, "host": "localhost", "apiEnabled": true, "webInterfaceEnabled": true },
+	"security": { "encryption": { "algorithm": "aes-256-gcm", "keyLength": 256 } }
+}
+```
+
+Environment overrides (precedence: env > file):
+
+- `ZTIS_SERVER_PORT=4000`
+- `ZTIS_SERVER_HOST=0.0.0.0`
+- `ZTIS_API_ENABLED=true|false`
+- `ZTIS_WEB_ENABLED=true|false`
+- `ZTIS_LOGGING_LEVEL=debug|info|warn|error`
+- `ZTIS_LOG_RETENTION_DAYS=30`
+- `ZTIS_SCANNER_PARALLEL=4`
+- `ZTIS_SCANNER_TIMEOUT=60000`
+- `ZTIS_SCANNER_RETRIES=2`
+
+Schema file: `src/config/ztis.schema.json`
+
+## 🧰 Development
+
+Scripts:
+
+```bash
+# Typecheck, lint, format
+npm run typecheck
+npm run lint
+npm run format:check
+
+# Build & test
+npm run build
+npm test
+
+# Coverage (local) / CI
+npm run test:coverage
+npm run test:coverage:ci
+```
+
+Notes:
+
+- Node >= 18 is required.
+- Logger is test‑safe (no lingering file handles during Jest runs).
+- The CLI exposes a global `--timeout <ms>`; scans respect cancellation.
+
+## 📦 Project structure
+
+- `src/cli.ts` – Commander‑based CLI and subcommands
+- `src/core/` – Scan engine, result processing, scanner registry
+- `src/scanners/` – Built‑in scanners (network/identity/supply‑chain/compliance)
+- `src/monitoring/` – Real‑time monitor and dashboard server
+- `src/config/` – Config manager (Joi + Ajv), JSON Schema
+- `tests/` – Jest tests and setup
+
+## 🧪 CI
+
+GitHub Actions runs lint, typecheck, build, and tests with coverage artifact upload. The CI config avoids hard coverage thresholds to keep PR feedback fast. You can tighten `jest.config.js` locally.
+
+## 🤝 Contributing
+
+PRs welcome! Suggested flow:
+
+1) Fork and create a feature branch
+2) Run: `npm ci; npm run lint; npm run typecheck; npm run build; npm test`
+3) Include tests for changes in public behavior
+4) Open a PR with a concise summary and screenshots/logs if relevant
+
+## 🔒 Security
+
+If you discover a vulnerability, please open a private issue with clear reproduction steps. Avoid posting sensitive details in public threads.
+
+## 📚 Resources
+
+- Docs: `docs/` folder (advanced notes) and the project Wiki
+- Issues: [GitHub Issues](https://github.com/sirhCC/Zero-Trust-Infrastructure-Scanner/issues)
+- Discussions: [GitHub Discussions](https://github.com/sirhCC/Zero-Trust-Infrastructure-Scanner/discussions)
 
 ---
 
-<div align="center">
-
-**Made with ❤️ for enterprise security teams**
-
-![GitHub Stars](https://img.shields.io/github/stars/sirhCC/Zero-Trust-Infrastructure-Scanner?style=social)
-
-</div>
+Made with ❤️ for security and platform teams.
