@@ -56,6 +56,10 @@ program
   .option('--k8s-namespace <namespace>', 'Kubernetes namespace to scan')
   .option('--cloud-provider <provider>', 'Cloud provider (aws|azure|gcp)')
   .option('--scan-depth <level>', 'Scan depth level (1-5)', '3')
+  .option('--export-report <file>', 'Export compliance report to file (json or csv based on extension)')
+  .option('--save-baseline <file>', 'Save current scan as baseline to file')
+  .option('--baseline <file>', 'Compare against baseline file and print drift')
+  .option('--fail-on-drift <severity>', 'Fail (exit 1) if drift >= 1 at or above severity (low|medium|high|critical)')
   .action(async (options) => {
     console.log(chalk.blue('🔍 Network Micro-Segmentation Analysis'));
     console.log(chalk.gray('Target:'), options.target || 'Auto-detect');
@@ -93,6 +97,44 @@ program
         scanOpts.timeoutMs = cfg.scanner.scanTimeout;
       }
       const result = await scanner.scan(target, scanOpts);
+
+      // Export report if requested
+      if (options.exportReport) {
+        const out = options.exportReport as string;
+        const fmt = out.toLowerCase().endsWith('.csv') ? 'csv' : 'json';
+        scanner.exportReport(result, out, fmt);
+        console.log(chalk.gray(`Report saved to ${out}`));
+      }
+
+      // Baseline save/compare
+      if (options.saveBaseline) {
+        scanner.saveBaseline(options.saveBaseline, result);
+        console.log(chalk.gray(`Baseline saved to ${options.saveBaseline}`));
+      }
+      if (options.baseline) {
+        const baseline = scanner.loadBaseline(options.baseline);
+        if (baseline) {
+          const drift = scanner.computeDrift(result, baseline);
+          console.log(chalk.bold('\nDrift vs baseline:'));
+          console.log(`  critical: ${drift.critical}`);
+          console.log(`  high:     ${drift.high}`);
+          console.log(`  medium:   ${drift.medium}`);
+          console.log(`  low:      ${drift.low}`);
+          console.log(`  total:    ${drift.total}`);
+          const sevOrder = ['low','medium','high','critical'];
+          if (options.failOnDrift) {
+            const idx = sevOrder.indexOf(String(options.failOnDrift));
+            const threshold = sevOrder.slice(idx);
+            const shouldFail = threshold.some((s) => (drift as any)[s] >= 1);
+            if (shouldFail) {
+              console.error(chalk.red('Drift threshold met; failing.'));
+              process.exit(1);
+            }
+          }
+        } else {
+          console.log(chalk.yellow('Baseline file not found; skipping drift comparison.'));
+        }
+      }
       
       // Display results
       console.log(chalk.green(`✅ Scan completed in ${result.duration}ms`));
