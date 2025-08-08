@@ -194,6 +194,10 @@ env:
 
 You can also run a safe, on-demand pipeline: `.github/workflows/manual-ci.yml` (trigger with “Run workflow” in GitHub Actions).
 
+Releases:
+
+- Tag a version (vX.Y.Z) to auto-build binaries for Windows/Linux/macOS via `.github/workflows/release.yml`.
+
 ## 🤝 Contributing
 
 PRs welcome! Suggested flow:
