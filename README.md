@@ -33,11 +33,12 @@ npm install && npm run build
 npm run scan-all                    # Complete security scan
 npm run scan:network                # Network analysis
 npm run scan:identity               # Identity permissions
-npm run scan:compliance             # Compliance check
+npm run scan:supply-chain           # Supply chain analysis
+npm run scan:compliance            # Compliance check
 
-# Real-time monitoring
-node dist/cli.js monitor --targets localhost
-node dist/cli.js dashboard --port 3000    # Web dashboard at http://localhost:3000
+# Real-time monitoring & dashboard
+npm run monitor -- --targets localhost
+npm run dashboard -- --port 3000    # Web dashboard at http://localhost:3000
 ```
 
 ## � Documentation
