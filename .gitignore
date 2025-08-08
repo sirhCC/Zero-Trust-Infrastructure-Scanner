@@ -217,6 +217,7 @@ settings.local.json
 # Test artifacts
 test-results/
 .jest-cache/
+test-data/
 
 # Performance logs
 *.perf
