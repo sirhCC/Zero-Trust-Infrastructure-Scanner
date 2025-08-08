@@ -152,6 +152,16 @@ Notes:
 
 GitHub Actions runs lint, typecheck, build, and tests with coverage artifact upload. The CI config avoids hard coverage thresholds to keep PR feedback fast. You can tighten `jest.config.js` locally.
 
+Example: set config via environment in CI
+
+```yaml
+env:
+	ZTIS_LOGGING_LEVEL: info
+	ZTIS_SCANNER_TIMEOUT: '60000'
+	ZTIS_SCANNER_PARALLEL: '4'
+	ZTIS_SERVER_PORT: '4000'
+```
+
 ## 🤝 Contributing
 
 PRs welcome! Suggested flow:
