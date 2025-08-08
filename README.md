@@ -38,6 +38,21 @@ node dist/cli.js --help
 npm run scan:network -- --help
 ```
 
+Binary builds (no Node required):
+
+```bash
+# Build Windows binary (creates bin/cli.exe)
+npm run build:bin:win
+
+# Cross-platform binaries (Windows/Linux/macOS x64)
+npm run build:bin
+```
+
+Notes:
+
+- Packaged binaries include built-in scanners and config schema; custom scanners aren’t supported in the binary build.
+- Use the source (Node) build to load custom modules.
+
 Common commands:
 
 ```bash

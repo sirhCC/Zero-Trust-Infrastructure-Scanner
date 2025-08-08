@@ -1,0 +1,73 @@
+name: Release binaries
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+jobs:
+  build-binaries:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build binaries (all)
+        run: npm run build:bin
+
+      - name: Archive artifacts
+        run: |
+          ls -la bin
+          cd bin
+          7z a zero-trust-scanner-win-x64.zip cli.exe
+          cd ..
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries
+          path: |
+            bin/cli
+            bin/cli.exe
+            bin/cli-macos-x64
+            bin/cli-linux-x64
+            bin/zero-trust-scanner-win-x64.zip
+          if-no-files-found: warn
+
+  publish-release:
+    needs: build-binaries
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: binaries
+          path: bin
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          draft: false
+          prerelease: false
+          files: |
+            bin/cli
+            bin/cli.exe
+            bin/cli-macos-x64
+            bin/cli-linux-x64
+            bin/zero-trust-scanner-win-x64.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
