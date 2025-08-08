@@ -5,6 +5,9 @@
 
 import { SCANNER_CONFIGS } from './scanner-config';
 import { ScannerResultProcessor } from './scanner-result-processor';
+import { applyComplianceMapping } from '../compliance/mapping';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export interface ScanTarget {
   type: 'network' | 'identity' | 'supply-chain' | 'compliance' | 'comprehensive';
@@ -149,8 +152,8 @@ export class ZeroTrustScanner {
         const scanner = await ScannerResultProcessor.loadScanner(config);
         const findings = await scanner.scan(target);
         
-        // Process findings and metrics using unified approach
-        scanResult.findings = ScannerResultProcessor.processFindings(findings);
+  // Process findings and metrics using unified approach
+  scanResult.findings = applyComplianceMapping(ScannerResultProcessor.processFindings(findings));
         scanResult.metrics = ScannerResultProcessor.calculateMetrics(scanResult.findings, config);
         
         // Additional processing time
@@ -188,6 +191,72 @@ export class ZeroTrustScanner {
     }
 
     return scanResult;
+  }
+
+  /**
+   * Export a compliance report (json|csv)
+   */
+  exportReport(result: ScanResult, outPath: string, format: 'json' | 'csv' = 'json'): void {
+    const dir = path.dirname(outPath);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    if (format === 'json') {
+      fs.writeFileSync(outPath, JSON.stringify(result, null, 2), 'utf8');
+      return;
+    }
+    // CSV: minimal shape
+    const lines: string[] = [
+      'id,severity,category,title,standard,control,impact'
+    ];
+    for (const f of result.findings) {
+      const impacts = f.compliance_impact && f.compliance_impact.length > 0 ? f.compliance_impact : [{ standard: '' as any, control: '', impact: '' as any }];
+      for (const c of impacts) {
+        const row = [
+          JSON.stringify(f.id),
+          f.severity,
+          JSON.stringify(f.category),
+          JSON.stringify(f.title),
+          c.standard || '',
+          JSON.stringify(c.control || ''),
+          c.impact || ''
+        ].join(',');
+        lines.push(row);
+      }
+    }
+    fs.writeFileSync(outPath, lines.join('\n'), 'utf8');
+  }
+
+  /**
+   * Baseline save/load and drift calculations
+   */
+  saveBaseline(filePath: string, result: ScanResult): void {
+    const dir = path.dirname(filePath);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify(result, null, 2), 'utf8');
+  }
+
+  loadBaseline(filePath: string): ScanResult | null {
+    if (!fs.existsSync(filePath)) return null;
+    const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    return { ...data, timestamp: new Date(data.timestamp) } as ScanResult;
+  }
+
+  /**
+   * Compute drift between two scan results; returns positive counts if current > baseline
+   */
+  computeDrift(current: ScanResult, baseline: ScanResult) {
+    const countBySeverity = (findings: typeof current.findings) => findings.reduce<Record<string, number>>((acc, f) => {
+      acc[f.severity] = (acc[f.severity] || 0) + 1;
+      return acc;
+    }, {});
+    const c = countBySeverity(current.findings);
+    const b = countBySeverity(baseline.findings);
+    return {
+      critical: (c.critical || 0) - (b.critical || 0),
+      high: (c.high || 0) - (b.high || 0),
+      medium: (c.medium || 0) - (b.medium || 0),
+      low: (c.low || 0) - (b.low || 0),
+      total: current.findings.length - baseline.findings.length
+    };
   }
 
   /**
