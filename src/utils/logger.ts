@@ -24,6 +24,7 @@ export class Logger {
 
     // Console transport (always enabled)
     const consoleTransport = new winston.transports.Console({
+      silent: process.env.ZTIS_QUIET === '1',
       format: winston.format.combine(
         winston.format.colorize(),
         winston.format.simple(),
@@ -47,8 +48,20 @@ export class Logger {
           })
         ];
 
+    // Optional user-specified log file
+    const userLogFile = process.env.ZTIS_LOG_FILE;
+    if (!isTest && userLogFile) {
+      try {
+        const dir = path.dirname(userLogFile);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        fileTransports.push(new winston.transports.File({ filename: userLogFile }));
+      } catch {
+        // If file setup fails, continue without user file
+      }
+    }
+
     this.winston = winston.createLogger({
-      level: process.env.LOG_LEVEL || 'info',
+  level: process.env.ZTIS_LOGGING_LEVEL || process.env.LOG_LEVEL || 'info',
       format: winston.format.combine(
         winston.format.timestamp(),
         winston.format.errors({ stack: true }),
