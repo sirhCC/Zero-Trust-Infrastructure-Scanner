@@ -9,6 +9,9 @@ describe('ConfigManager', () => {
   afterEach(() => {
     delete process.env.ZTIS_SERVER_PORT;
     delete process.env.ZTIS_SCANNER_TIMEOUT;
+  delete process.env.ZTIS_LOGGING_LEVEL;
+  delete process.env.ZTIS_SCANNER_RETRIES;
+  delete process.env.ZTIS_SCANNER_PARALLEL;
     if (fs.existsSync(tmpJson)) fs.unlinkSync(tmpJson);
   });
 
@@ -35,6 +38,25 @@ describe('ConfigManager', () => {
     // server.port invalid type
     fs.writeFileSync(tmpJson, JSON.stringify({ server: { port: -1 } }, null, 2));
     const mgr = ConfigManager.getInstance();
-    await expect(mgr.initialize(tmpJson)).rejects.toBeTruthy();
+    await expect(mgr.initialize(tmpJson)).rejects.toThrowErrorMatchingSnapshot();
+  });
+
+  it('fails validation for invalid logging level (snapshot)', async () => {
+    fs.writeFileSync(tmpJson, JSON.stringify({ logging: { level: 'verbose' } }, null, 2));
+    const mgr = ConfigManager.getInstance();
+    await expect(mgr.initialize(tmpJson)).rejects.toThrowErrorMatchingSnapshot();
+  });
+
+  it('applies logging level and scanner retries/parallel via env overrides', async () => {
+    fs.writeFileSync(tmpJson, JSON.stringify({}, null, 2));
+    process.env.ZTIS_LOGGING_LEVEL = 'debug';
+    process.env.ZTIS_SCANNER_RETRIES = '4';
+    process.env.ZTIS_SCANNER_PARALLEL = '5';
+    const mgr = ConfigManager.getInstance();
+    await mgr.initialize(tmpJson);
+    const cfg = mgr.getConfig();
+    expect(cfg.logging.level).toBe('debug');
+    expect(cfg.scanner.retryAttempts).toBe(4);
+    expect(cfg.scanner.parallelScans).toBe(5);
   });
 });
