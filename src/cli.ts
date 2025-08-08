@@ -7,7 +7,15 @@
 
 import { Command } from 'commander';
 import chalk from 'chalk';
-import { version } from '../package.json';
+// Importing version directly from package.json can be problematic when bundling; guard and fallback to env
+let version: string = '0.0.0';
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const pkg = require('../package.json');
+  version = pkg?.version || process.env.npm_package_version || version;
+} catch {
+  version = process.env.npm_package_version || version;
+}
 import { createBehavioralCommands } from './cli/behavioral-commands';
 import { addRiskScoringCommands } from './cli/risk-commands';
 import mlRiskCommands from './cli/ml-risk-commands';
@@ -18,7 +26,8 @@ const program = new Command();
 program
   .name('zero-trust-scanner')
   .description('Enterprise Zero-Trust Infrastructure Scanner')
-  .version(version, '-v, --version', 'Display version number');
+  // Use default Commander flags for version: -V, --version
+  .version(version);
 
 // Global options
 program
@@ -27,6 +36,14 @@ program
   .option('-v, --verbose', 'Enable verbose logging')
   .option('--timeout <ms>', 'Global scan timeout in milliseconds')
   .option('--no-color', 'Disable colored output');
+
+// Ensure verbose flag affects logging before any command action runs
+program.hook('preAction', () => {
+  const rootOpts = program.opts();
+  if (rootOpts?.verbose) {
+    process.env.ZTIS_LOGGING_LEVEL = 'debug';
+  }
+});
 
 /**
  * Network Micro-Segmentation Command
