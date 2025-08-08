@@ -19,6 +19,7 @@
     "format:check": "prettier --check .",
   "clean": "rimraf dist",
   "clean:artifacts": "rimraf reports scan-results *.report.*",
+  "clean:all": "rimraf dist coverage bin logs reports scan-results *.report.*",
     "prebuild": "npm run clean",
     "postbuild": "copyfiles -u 1 \"src/**/*.json\" dist",
     "scan": "ts-node src/cli.ts",
