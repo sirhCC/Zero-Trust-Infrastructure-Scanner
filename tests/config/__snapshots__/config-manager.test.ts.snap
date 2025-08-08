@@ -1,0 +1,5 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`ConfigManager fails validation for invalid config (schema) 1`] = `"Configuration validation failed: "server.port" must be greater than or equal to 1"`;
+
+exports[`ConfigManager fails validation for invalid logging level (snapshot) 1`] = `"Configuration validation failed: "logging.level" must be one of [debug, info, warn, error]"`;
