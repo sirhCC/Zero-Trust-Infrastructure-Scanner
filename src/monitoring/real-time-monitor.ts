@@ -84,6 +84,8 @@ export interface LiveUpdate {
   type: 'status' | 'finding' | 'metric' | 'alert' | 'behavioral_baseline_update';
   target: string;
   data: any;
+  // Optional top-level severity to simplify client rendering
+  severity?: 'critical' | 'high' | 'medium' | 'low' | 'info';
 }
 
 export class RealTimeMonitor extends EventEmitter {
@@ -274,8 +276,12 @@ export class RealTimeMonitor extends EventEmitter {
         data: {
           status: 'connected',
           targets: this.config.targets.length,
-          monitoring_active: this.isRunning
-        }
+          monitoring_active: this.isRunning,
+          active_scans: this.monitoringIntervals.size,
+          connected_clients: this.connectedClients.size,
+          alerts_queued: this.alertQueue.length
+        },
+        severity: 'info'
       });
 
       // Handle client disconnect
@@ -498,10 +504,11 @@ export class RealTimeMonitor extends EventEmitter {
       timestamp: new Date(),
       type: 'finding',
       target: target.name,
-      data: {
+  data: {
         action: 'new',
         finding: finding
-      }
+  },
+  severity: finding.severity
     });
     
     // Trigger alert if severity meets threshold
@@ -538,7 +545,8 @@ export class RealTimeMonitor extends EventEmitter {
       data: {
         action: 'resolved',
         finding: finding
-      }
+  },
+  severity: 'info'
     });
   }
 
@@ -583,7 +591,8 @@ export class RealTimeMonitor extends EventEmitter {
           patterns: event.behavioral_context.behavioral_patterns,
           recommended_actions: event.recommended_actions.slice(0, 3), // First 3 actions
           severity: event.severity
-        }
+  },
+  severity: event.severity
       });
 
       // Process high-severity behavioral events for alerting
@@ -725,7 +734,9 @@ export class RealTimeMonitor extends EventEmitter {
       timestamp: event.timestamp,
       type: 'status',
       target: event.target_id,
-      data: event.data
+  // Include event_type and preserve original event data for richer clients
+  data: { ...event.data, event_type: event.type },
+  severity: event.severity
     });
   }
 

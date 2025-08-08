@@ -894,6 +894,14 @@ program
                     <span>Critical Alerts:</span>
                     <span class="metric-value" id="critical-alerts" style="color: #ef4444;">0</span>
                 </div>
+        <div class="metric">
+          <span>Connected Clients:</span>
+          <span class="metric-value" id="connected-clients">0</span>
+        </div>
+        <div class="metric">
+          <span>Alerts Queued:</span>
+          <span class="metric-value" id="alerts-queued">0</span>
+        </div>
             </div>
             
             <div class="card">
@@ -949,17 +957,37 @@ program
             eventCount++;
             document.getElementById('total-events').textContent = eventCount;
             
-            if (data.type === 'status') {
-                document.getElementById('target-count').textContent = data.data.targets || 0;
-                return;
-            }
+      if (data.type === 'status') {
+        if (data.data) {
+          if (typeof data.data.targets !== 'undefined') {
+            document.getElementById('target-count').textContent = data.data.targets;
+          }
+          if (typeof data.data.active_scans !== 'undefined') {
+            document.getElementById('active-scans').textContent = data.data.active_scans;
+          }
+          if (typeof data.data.connected_clients !== 'undefined') {
+            document.getElementById('connected-clients').textContent = data.data.connected_clients;
+          }
+          if (typeof data.data.alerts_queued !== 'undefined') {
+            document.getElementById('alerts-queued').textContent = data.data.alerts_queued;
+          }
+        }
+        // fall through to also log the event row below
+      }
+
+      if (data.type === 'metric' && data.data) {
+        // Update active scans if provided in metric payloads (defensive)
+        if (typeof data.data.active_scans !== 'undefined') {
+          document.getElementById('active-scans').textContent = data.data.active_scans;
+        }
+      }
             
             // Add event to list
             const eventsContainer = document.getElementById('events');
             const eventDiv = document.createElement('div');
             
-            let eventClass = 'info';
-            if (data.severity === 'critical' || data.severity === 'high') {
+      let eventClass = 'info';
+      if (data.severity === 'critical' || data.severity === 'high') {
                 eventClass = 'critical';
                 criticalCount++;
                 document.getElementById('critical-alerts').textContent = criticalCount;
@@ -969,7 +997,7 @@ program
             
             eventDiv.className = 'event ' + eventClass;
             eventDiv.innerHTML = \`
-                <div>\${data.type}: \${data.message || JSON.stringify(data.data)}</div>
+        <div>\${data.type}: \${data.message || JSON.stringify(data.data)}</div>
                 <div class="timestamp">\${new Date(data.timestamp).toLocaleString()}</div>
             \`;
             
