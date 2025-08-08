@@ -36,6 +36,8 @@ program
 program
   .option('-c, --config <file>', 'Configuration file path', './ztis.config.json')
   .option('-o, --output <format>', 'Output format (json|yaml|table)', 'table')
+  .option('--log-file <file>', 'Write logs to a specific file (in addition to defaults)')
+  .option('--quiet', 'Suppress non-essential output')
   .option('-v, --verbose', 'Enable verbose logging')
   .option('--timeout <ms>', 'Global scan timeout in milliseconds')
   .option('--no-color', 'Disable colored output');
@@ -46,6 +48,12 @@ program.hook('preAction', (_thisCmd, actionCmd) => {
   const rootOpts = (actionCmd as any)?.optsWithGlobals?.() || program.opts();
   if (rootOpts?.verbose) {
     process.env.ZTIS_LOGGING_LEVEL = 'debug';
+  }
+  if (rootOpts?.quiet) {
+    process.env.ZTIS_QUIET = '1';
+  }
+  if (rootOpts?.logFile) {
+    process.env.ZTIS_LOG_FILE = rootOpts.logFile;
   }
 });
 
@@ -91,8 +99,9 @@ program
   const cfg = cfgMgr.getConfig();
 
       // Import and initialize scanner
-      const { ZeroTrustScanner } = await import('./core/scanner');
-  const scanner = new ZeroTrustScanner();
+    const { ZeroTrustScanner } = await import('./core/scanner');
+  const quietMode = !!rootOpts.quiet || (rootOpts.output && rootOpts.output !== 'table');
+  const scanner = new ZeroTrustScanner(false, quietMode);
   await scanner.initialize();
       
       // Prepare scan target
@@ -163,7 +172,7 @@ program
           fs.writeFileSync(options.outFile, payload, 'utf8');
           // Provide a tiny confirmation to aid CI/debugging
           if (rootOpts.output !== 'table') {
-            console.log(chalk.gray(`Output written to ${options.outFile}`));
+            console.error(chalk.gray(`Output written to ${options.outFile}`));
           }
         } else {
           console.log(payload);
@@ -234,8 +243,9 @@ program
   const cfg = cfgMgr.getConfig();
 
       // Import and initialize scanner
-      const { ZeroTrustScanner } = await import('./core/scanner');
-  const scanner = new ZeroTrustScanner();
+    const { ZeroTrustScanner } = await import('./core/scanner');
+  const quietMode = !!rootOpts.quiet || (rootOpts.output && rootOpts.output !== 'table');
+  const scanner = new ZeroTrustScanner(false, quietMode);
   await scanner.initialize();
       
       // Prepare scan target
@@ -338,8 +348,9 @@ program
   const cfg = cfgMgr.getConfig();
 
       // Import and initialize scanner
-      const { ZeroTrustScanner } = await import('./core/scanner');
-  const scanner = new ZeroTrustScanner();
+    const { ZeroTrustScanner } = await import('./core/scanner');
+  const quietMode = !!rootOpts.quiet || (rootOpts.output && rootOpts.output !== 'table');
+  const scanner = new ZeroTrustScanner(false, quietMode);
   await scanner.initialize();
       
       // Prepare scan target
