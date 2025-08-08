@@ -6,6 +6,9 @@
 import * as fs from 'fs';
 import * as yaml from 'yaml';
 import Joi from 'joi';
+import Ajv, { ErrorObject } from 'ajv';
+import addFormats from 'ajv-formats';
+import * as path from 'path';
 
 export interface ZTISConfig {
   scanner: ScannerConfig;
@@ -271,6 +274,8 @@ export class ConfigManager {
   private static instance: ConfigManager;
   private config: ZTISConfig | null = null;
   private configPath: string = './ztis.config.json';
+  private ajv?: Ajv;
+  private jsonSchema: any;
 
   private constructor() {}
 
@@ -290,6 +295,20 @@ export class ConfigManager {
   public async initialize(configPath?: string): Promise<void> {
     if (configPath) {
       this.configPath = configPath;
+    }
+    // Initialize AJV
+    this.ajv = new Ajv({ allErrors: true, strict: false, useDefaults: false });
+    addFormats(this.ajv);
+
+    // Load JSON Schema
+    const schemaPath = path.resolve(__dirname, 'ztis.schema.json');
+    try {
+      const schemaRaw = fs.readFileSync(schemaPath, 'utf8');
+      this.jsonSchema = JSON.parse(schemaRaw);
+    } catch (e) {
+      // If schema missing, proceed with Joi-only validation but warn
+      console.warn('⚠️  JSON Schema not found; falling back to Joi validation only');
+      this.jsonSchema = null;
     }
 
     await this.loadConfig();
@@ -314,23 +333,74 @@ export class ConfigManager {
         console.log(`Config file not found at ${this.configPath}, using defaults`);
       }
 
-      // Validate and set defaults
-      const { error, value } = configSchema.validate(configData, { 
+      // Apply environment overrides
+      configData = this.applyEnvOverrides(configData);
+
+      // Validate and set defaults with Joi (provides defaults)
+      const { error, value } = configSchema.validate(configData, {
         allowUnknown: false,
-        stripUnknown: true
+        stripUnknown: true,
       });
 
       if (error) {
         throw new Error(`Configuration validation failed: ${error.message}`);
       }
 
-      this.config = value as ZTISConfig;
+      const candidate = value as ZTISConfig;
+
+      // Validate against JSON Schema via Ajv (structure/compat)
+      if (this.ajv && this.jsonSchema) {
+        const validate = this.ajv.compile(this.jsonSchema);
+        const valid = validate(candidate);
+        if (!valid) {
+          const errs = (validate.errors || []).map(this.formatAjvError).join('; ');
+          throw new Error(`Configuration failed JSON Schema validation: ${errs}`);
+        }
+      }
+
+      this.config = candidate;
       console.log('✅ Configuration loaded successfully');
 
     } catch (error) {
       console.error('❌ Failed to load configuration:', error);
       throw error;
     }
+  }
+
+  /**
+   * Apply environment variable overrides using ZTIS_* variables
+   * Example:
+   *  ZTIS_SERVER_PORT=4000
+   *  ZTIS_LOGGING_LEVEL=debug
+   */
+  private applyEnvOverrides(configData: any): any {
+    const out = { ...configData };
+
+    const set = (pathKeys: string[], value: any) => {
+      let cur: any = out;
+      for (let i = 0; i < pathKeys.length - 1; i++) {
+        const k = pathKeys[i];
+        if (cur[k] == null || typeof cur[k] !== 'object') cur[k] = {};
+        cur = cur[k];
+      }
+      cur[pathKeys[pathKeys.length - 1]] = value;
+    };
+
+    const env = process.env;
+    const mapNumber = (v?: string) => (v != null ? Number(v) : undefined);
+    const mapBool = (v?: string) => (v != null ? v === 'true' || v === '1' : undefined);
+
+    if (env.ZTIS_SERVER_PORT) set(['server', 'port'], mapNumber(env.ZTIS_SERVER_PORT));
+    if (env.ZTIS_SERVER_HOST) set(['server', 'host'], env.ZTIS_SERVER_HOST);
+    if (env.ZTIS_API_ENABLED) set(['server', 'apiEnabled'], mapBool(env.ZTIS_API_ENABLED));
+    if (env.ZTIS_WEB_ENABLED) set(['server', 'webInterfaceEnabled'], mapBool(env.ZTIS_WEB_ENABLED));
+    if (env.ZTIS_LOGGING_LEVEL) set(['logging', 'level'], env.ZTIS_LOGGING_LEVEL);
+    if (env.ZTIS_LOG_RETENTION_DAYS) set(['logging', 'retentionDays'], mapNumber(env.ZTIS_LOG_RETENTION_DAYS));
+    if (env.ZTIS_SCANNER_PARALLEL) set(['scanner', 'parallelScans'], mapNumber(env.ZTIS_SCANNER_PARALLEL));
+    if (env.ZTIS_SCANNER_TIMEOUT) set(['scanner', 'scanTimeout'], mapNumber(env.ZTIS_SCANNER_TIMEOUT));
+    if (env.ZTIS_SCANNER_RETRIES) set(['scanner', 'retryAttempts'], mapNumber(env.ZTIS_SCANNER_RETRIES));
+
+    return out;
   }
 
   /**
@@ -422,6 +492,22 @@ export class ConfigManager {
       };
     }
 
+    if (this.ajv && this.jsonSchema) {
+      const validate = this.ajv.compile(this.jsonSchema);
+      const valid = validate(this.config);
+      if (!valid) {
+        return {
+          valid: false,
+          errors: (validate.errors || []).map(this.formatAjvError),
+        };
+      }
+    }
+
     return { valid: true };
+  }
+
+  private formatAjvError(err: ErrorObject): string {
+    const instancePath = err.instancePath || '(root)';
+    return `${instancePath} ${err.message || ''}`.trim();
   }
 }

@@ -31,8 +31,8 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Test
-        run: npm run test:ci
+      - name: Test (with coverage)
+        run: npm run test:coverage:ci
 
       - name: Upload coverage
         if: success()

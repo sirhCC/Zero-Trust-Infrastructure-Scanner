@@ -96,9 +96,19 @@ export class ZeroTrustScanner {
   /**
    * Execute a security scan
    */
-  async scan(target: ScanTarget): Promise<ScanResult> {
+  async scan(target: ScanTarget, opts?: { signal?: AbortSignal; timeoutMs?: number }): Promise<ScanResult> {
     const scanId = this.generateScanId();
     const startTime = Date.now();
+    let aborted = false;
+    let timeoutHandle: NodeJS.Timeout | null = null;
+    const onAbort = () => { aborted = true; };
+    if (opts?.signal) {
+      if (opts.signal.aborted) aborted = true;
+      else opts.signal.addEventListener('abort', onAbort, { once: true });
+    }
+    if (opts?.timeoutMs && opts.timeoutMs > 0) {
+      timeoutHandle = setTimeout(() => { aborted = true; }, opts.timeoutMs);
+    }
     
     const scanResult: ScanResult = {
       id: scanId,
@@ -120,7 +130,7 @@ export class ZeroTrustScanner {
     this.activeScans.set(scanId, scanResult);
 
     try {
-      if (!this.isTestMode) {
+  if (!this.isTestMode) {
         console.log(`🔍 Starting ${target.type} scan for: ${target.target}`);
       }
       
@@ -130,9 +140,10 @@ export class ZeroTrustScanner {
         throw new Error(`Unsupported scan type: ${target.type}`);
       }
 
+      const isAborted = () => aborted;
       if (target.type === 'comprehensive') {
         // Run comprehensive scan across all scanner types
-        await this.runComprehensiveScan(target, scanResult, scanId);
+        await this.runComprehensiveScan(target, scanResult, scanId, isAborted);
       } else {
         // Load scanner and execute scan
         const scanner = await ScannerResultProcessor.loadScanner(config);
@@ -143,7 +154,7 @@ export class ZeroTrustScanner {
         scanResult.metrics = ScannerResultProcessor.calculateMetrics(scanResult.findings, config);
         
         // Additional processing time
-        await this.simulateScan(config.processingTime, scanId);
+  await this.simulateScan(config.processingTime, scanId, isAborted);
       }
 
       scanResult.status = 'completed';
@@ -172,6 +183,8 @@ export class ZeroTrustScanner {
     } finally {
       this.activeScans.delete(scanId);
       this.scanHistory.push(scanResult);
+      if (opts?.signal) opts.signal.removeEventListener('abort', onAbort as any);
+      if (timeoutHandle) clearTimeout(timeoutHandle);
     }
 
     return scanResult;
@@ -202,7 +215,7 @@ export class ZeroTrustScanner {
   /**
    * Simulate scan work with delay (for testing and demo purposes)
    */
-  private async simulateScan(duration: number, scanId?: string): Promise<void> {
+  private async simulateScan(duration: number, scanId?: string, isAborted?: () => boolean): Promise<void> {
     const startTime = Date.now();
     const endTime = startTime + duration;
     
@@ -215,6 +228,9 @@ export class ZeroTrustScanner {
           throw new Error('Scan cancelled');
         }
       }
+      if (isAborted && isAborted()) {
+        throw new Error('Scan cancelled');
+      }
       
       // Wait 100ms before checking again
       await new Promise(resolve => setTimeout(resolve, 100));
@@ -224,10 +240,10 @@ export class ZeroTrustScanner {
   /**
    * Run comprehensive scan across all scanner types
    */
-  private async runComprehensiveScan(target: ScanTarget, scanResult: ScanResult, scanId: string): Promise<void> {
+  private async runComprehensiveScan(target: ScanTarget, scanResult: ScanResult, scanId: string, isAborted?: () => boolean): Promise<void> {
     const allFindings: SecurityFinding[] = [];
     let totalChecks = 0;
-    let totalProcessingTime = 0;
+  let _totalProcessingTime = 0;
 
     // Run all scanner types except comprehensive
     const scannerTypes = Object.keys(SCANNER_CONFIGS).filter(type => type !== 'comprehensive');
@@ -256,10 +272,10 @@ export class ZeroTrustScanner {
         allFindings.push(...processedFindings);
         
         totalChecks += config.totalChecks;
-        totalProcessingTime += config.processingTime;
+  _totalProcessingTime += config.processingTime;
         
         // Simulate processing time for this scanner
-        await this.simulateScan(Math.floor(config.processingTime * 0.3), scanId);
+  await this.simulateScan(Math.floor(config.processingTime * 0.3), scanId, isAborted);
         
       } catch (error) {
         if (!this.isTestMode) {

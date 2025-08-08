@@ -33,6 +33,8 @@
   },
   "ignorePatterns": [
     "dist/**",
-    "node_modules/**"
+  "node_modules/**",
+  "jest.config.js",
+  "jest.ci.config.js"
   ]
 }

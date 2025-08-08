@@ -25,6 +25,7 @@ program
   .option('-c, --config <file>', 'Configuration file path', './ztis.config.json')
   .option('-o, --output <format>', 'Output format (json|yaml|table)', 'table')
   .option('-v, --verbose', 'Enable verbose logging')
+  .option('--timeout <ms>', 'Global scan timeout in milliseconds')
   .option('--no-color', 'Disable colored output');
 
 /**
@@ -45,8 +46,8 @@ program
     try {
       // Import and initialize scanner
       const { ZeroTrustScanner } = await import('./core/scanner');
-      const scanner = new ZeroTrustScanner();
-      await scanner.initialize();
+  const scanner = new ZeroTrustScanner();
+  await scanner.initialize();
       
       // Prepare scan target
       const target = {
@@ -61,7 +62,15 @@ program
       };
       
       console.log(chalk.yellow('🚀 Starting network scan...'));
-      const result = await scanner.scan(target);
+      const rootOpts = program.opts();
+      const timeoutMs = rootOpts.timeout ? parseInt(rootOpts.timeout) : undefined;
+      const scanOpts: { signal?: AbortSignal; timeoutMs?: number } = {};
+      if (typeof timeoutMs === 'number' && !Number.isNaN(timeoutMs)) {
+        scanOpts.timeoutMs = timeoutMs;
+      }
+      const controller = scanOpts.timeoutMs ? new AbortController() : undefined;
+      if (controller) scanOpts.signal = controller.signal;
+      const result = await scanner.scan(target, scanOpts);
       
       // Display results
       console.log(chalk.green(`✅ Scan completed in ${result.duration}ms`));
@@ -115,8 +124,8 @@ program
     try {
       // Import and initialize scanner
       const { ZeroTrustScanner } = await import('./core/scanner');
-      const scanner = new ZeroTrustScanner();
-      await scanner.initialize();
+  const scanner = new ZeroTrustScanner();
+  await scanner.initialize();
       
       // Prepare scan target
       const target = {
@@ -135,7 +144,15 @@ program
       };
       
       console.log(chalk.yellow('🚀 Starting identity scan...'));
-      const result = await scanner.scan(target);
+      const rootOpts = program.opts();
+      const timeoutMs = rootOpts.timeout ? parseInt(rootOpts.timeout) : undefined;
+      const scanOpts: { signal?: AbortSignal; timeoutMs?: number } = {};
+      if (typeof timeoutMs === 'number' && !Number.isNaN(timeoutMs)) {
+        scanOpts.timeoutMs = timeoutMs;
+      }
+      const controller = scanOpts.timeoutMs ? new AbortController() : undefined;
+      if (controller) scanOpts.signal = controller.signal;
+      const result = await scanner.scan(target, scanOpts);
       
       // Display results
       console.log(chalk.green(`✅ Scan completed in ${result.duration}ms`));
@@ -206,8 +223,8 @@ program
     try {
       // Import and initialize scanner
       const { ZeroTrustScanner } = await import('./core/scanner');
-      const scanner = new ZeroTrustScanner();
-      await scanner.initialize();
+  const scanner = new ZeroTrustScanner();
+  await scanner.initialize();
       
       // Prepare scan target
       const target = {
@@ -227,7 +244,15 @@ program
       };
       
       console.log(chalk.yellow('🚀 Starting supply chain scan...'));
-      const result = await scanner.scan(target);
+      const rootOpts = program.opts();
+      const timeoutMs = rootOpts.timeout ? parseInt(rootOpts.timeout) : undefined;
+      const scanOpts: { signal?: AbortSignal; timeoutMs?: number } = {};
+      if (typeof timeoutMs === 'number' && !Number.isNaN(timeoutMs)) {
+        scanOpts.timeoutMs = timeoutMs;
+      }
+      const controller = scanOpts.timeoutMs ? new AbortController() : undefined;
+      if (controller) scanOpts.signal = controller.signal;
+      const result = await scanner.scan(target, scanOpts);
       
       // Display results
       console.log(chalk.green(`✅ Scan completed in ${result.duration}ms`));
@@ -319,8 +344,8 @@ program
     try {
       // Import and initialize scanner
       const { ZeroTrustScanner } = await import('./core/scanner');
-      const scanner = new ZeroTrustScanner();
-      await scanner.initialize();
+  const scanner = new ZeroTrustScanner();
+  await scanner.initialize();
       
       // Prepare scan target
       const target = {
@@ -341,7 +366,15 @@ program
       };
       
       console.log(chalk.yellow('🚀 Starting compliance scan...'));
-      const result = await scanner.scan(target);
+      const rootOpts = program.opts();
+      const timeoutMs = rootOpts.timeout ? parseInt(rootOpts.timeout) : undefined;
+      const scanOpts: { signal?: AbortSignal; timeoutMs?: number } = {};
+      if (typeof timeoutMs === 'number' && !Number.isNaN(timeoutMs)) {
+        scanOpts.timeoutMs = timeoutMs;
+      }
+      const controller = scanOpts.timeoutMs ? new AbortController() : undefined;
+      if (controller) scanOpts.signal = controller.signal;
+      const result = await scanner.scan(target, scanOpts);
       
       // Display results
       console.log(chalk.green(`✅ Scan completed in ${result.duration}ms`));
@@ -801,18 +834,35 @@ program
   .option('--validate', 'Validate current configuration')
   .option('--show', 'Show current configuration')
   .action(async (options) => {
+    const { ConfigManager } = await import('./config/config-manager');
+    const configPath = (program.opts() as any).config as string;
+    const mgr = ConfigManager.getInstance();
     if (options.init) {
       console.log(chalk.blue('📝 Initializing configuration...'));
-      // TODO: Create default config
-      console.log(chalk.green('✅ Configuration file created: ztis.config.json'));
+      await mgr.initialize(configPath);
+      await mgr.createDefaultConfig(configPath);
+      console.log(chalk.green(`✅ Configuration file created: ${configPath}`));
     } else if (options.validate) {
       console.log(chalk.blue('🔍 Validating configuration...'));
-      // TODO: Validate config
+      await mgr.initialize(configPath);
+      const validation = mgr.validateConfig();
+      if (!validation.valid) {
+        console.error(chalk.red('❌ Configuration validation failed:'));
+        (validation.errors || []).forEach(e => console.error('  -', e));
+        process.exit(1);
+      }
       console.log(chalk.green('✅ Configuration is valid'));
     } else if (options.show) {
       console.log(chalk.blue('📋 Current configuration:'));
-      // TODO: Show config
-      console.log(chalk.yellow('⚠️  Configuration display coming soon...'));
+      await mgr.initialize(configPath);
+      const cfg = mgr.getConfig();
+      const outFmt = (program.opts() as any).output as string;
+      if (outFmt === 'yaml' || outFmt === 'yml') {
+        const { stringify } = await import('yaml');
+        console.log(stringify(cfg));
+      } else {
+        console.log(JSON.stringify(cfg, null, 2));
+      }
     } else {
       console.log(chalk.red('❌ Please specify an action (--init, --validate, or --show)'));
     }

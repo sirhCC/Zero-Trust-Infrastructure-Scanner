@@ -11,6 +11,7 @@
   "test": "jest",
   "test:watch": "jest --watch",
   "test:coverage": "jest --coverage",
+  "test:coverage:ci": "jest --config jest.ci.config.js --coverage",
   "test:ci": "jest --ci",
   "lint": "eslint . --ext .ts",
   "lint:fix": "eslint . --ext .ts --fix",
@@ -48,6 +49,8 @@
   "dependencies": {
     "@types/ws": "^8.18.1",
     "axios": "^1.4.0",
+  "ajv": "^8.12.0",
+  "ajv-formats": "^2.1.1",
     "chalk": "^4.1.2",
     "commander": "^11.0.0",
     "dotenv": "^16.3.1",
