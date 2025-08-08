@@ -1,0 +1,206 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://example.com/schemas/ztis.config.schema.json",
+  "title": "Zero-Trust Infrastructure Scanner Config",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "scanner": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "parallelScans": { "type": "integer", "minimum": 1, "maximum": 10 },
+        "scanTimeout": { "type": "integer", "minimum": 30000 },
+        "retryAttempts": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "outputDirectory": { "type": "string" },
+        "reportFormats": {
+          "type": "array",
+          "items": { "enum": ["json", "yaml", "html", "pdf"] }
+        }
+      },
+      "required": []
+    },
+    "network": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "defaultScanDepth": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "includedNetworks": { "type": "array", "items": { "type": "string" } },
+        "excludedNetworks": { "type": "array", "items": { "type": "string" } },
+        "portScanEnabled": { "type": "boolean" },
+        "serviceScanEnabled": { "type": "boolean" },
+        "cloudProviders": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "name": { "enum": ["aws", "azure", "gcp"] },
+              "enabled": { "type": "boolean" },
+              "regions": { "type": "array", "items": { "type": "string" } },
+              "credentials": { "type": "object", "additionalProperties": true }
+            },
+            "required": ["name"]
+          }
+        }
+      },
+      "required": []
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "providers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "type": { "enum": ["aws-iam", "azure-ad", "k8s-rbac", "local", "ldap"] },
+              "name": { "type": "string" },
+              "enabled": { "type": "boolean" },
+              "endpoint": { "type": "string" },
+              "credentials": { "type": "object", "additionalProperties": true }
+            },
+            "required": ["type", "name"]
+          }
+        },
+        "privilegeThresholds": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "low": { "type": "number" },
+            "medium": { "type": "number" },
+            "high": { "type": "number" },
+            "critical": { "type": "number" }
+          }
+        },
+        "includeServiceAccounts": { "type": "boolean" },
+        "analyzePermissionBoundaries": { "type": "boolean" }
+      },
+      "required": []
+    },
+    "supplyChain": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "registries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "url": { "type": "string", "format": "uri" },
+              "type": { "enum": ["docker", "ecr", "acr", "gcr", "harbor"] },
+              "credentials": { "type": "object", "additionalProperties": true }
+            },
+            "required": ["name", "url", "type"]
+          }
+        },
+        "packageManagers": { "type": "array", "items": { "type": "string" } },
+        "vulnerabilityDatabases": { "type": "array", "items": { "type": "string" } },
+        "severityThreshold": { "enum": ["low", "medium", "high", "critical"] },
+        "includeDevelopmentDependencies": { "type": "boolean" },
+        "licenseChecking": { "type": "boolean" }
+      },
+      "required": []
+    },
+    "compliance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "standards": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "name": { "enum": ["SOC2", "PCI", "HIPAA", "GDPR", "ISO27001"] },
+              "enabled": { "type": "boolean" },
+              "controls": { "type": "array", "items": { "type": "string" } },
+              "excludedControls": { "type": "array", "items": { "type": "string" } },
+              "customRules": { "type": "array", "items": { "type": "string" } }
+            },
+            "required": ["name"]
+          }
+        },
+        "reportingFormats": { "type": "array", "items": { "type": "string" } },
+        "evidenceCollection": { "type": "boolean" },
+        "autoRemediation": { "type": "boolean" }
+      },
+      "required": []
+    },
+    "logging": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "level": { "enum": ["debug", "info", "warn", "error"] },
+        "outputs": { "type": "array", "items": { "type": "string" } },
+        "structuredLogging": { "type": "boolean" },
+        "retentionDays": { "type": "integer", "minimum": 1 },
+        "auditLogging": { "type": "boolean" }
+      },
+      "required": []
+    },
+    "server": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "host": { "type": "string" },
+        "apiEnabled": { "type": "boolean" },
+        "webInterfaceEnabled": { "type": "boolean" },
+        "authentication": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "type": { "enum": ["jwt", "oauth", "basic"] }
+          }
+        },
+        "rateLimit": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "windowMs": { "type": "integer" },
+            "maxRequests": { "type": "integer" }
+          }
+        }
+      }
+    },
+    "security": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "encryption": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "algorithm": { "type": "string" },
+            "keyLength": { "type": "integer" }
+          }
+        },
+        "dataRetention": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "scanResults": { "type": "integer" },
+            "logs": { "type": "integer" },
+            "reports": { "type": "integer" }
+          }
+        },
+        "accessControl": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "defaultRole": { "type": "string" },
+            "roles": { "type": "object" }
+          }
+        }
+      }
+    }
+  }
+}
