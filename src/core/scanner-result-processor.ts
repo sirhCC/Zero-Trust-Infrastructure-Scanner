@@ -51,7 +51,28 @@ export class ScannerResultProcessor {
    * Load and instantiate a scanner module
    */
   static async loadScanner(config: ScannerConfig): Promise<any> {
-    const module = await import(config.moduleImport);
+    // Use literal imports for known built-in scanners so packagers (e.g., pkg) can include them.
+    // Fall back to dynamic import for custom modules in dev environments.
+    let module: any;
+    switch (config.moduleImport) {
+      case '../scanners/network-scanner':
+        module = await import('../scanners/network-scanner');
+        break;
+      case '../scanners/identity-scanner':
+        module = await import('../scanners/identity-scanner');
+        break;
+      case '../scanners/supply-chain-scanner':
+        module = await import('../scanners/supply-chain-scanner');
+        break;
+      case '../scanners/compliance-scanner':
+        module = await import('../scanners/compliance-scanner');
+        break;
+      default:
+        throw new Error(
+          `Unsupported scanner module '${config.moduleImport}' in packaged binary. ` +
+          `Use the source build to load custom scanners.`
+        );
+    }
     const ScannerClass = module[config.className];
     const scanner = new ScannerClass();
     
