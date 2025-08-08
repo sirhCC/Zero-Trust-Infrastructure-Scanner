@@ -100,6 +100,21 @@ Minimal JSON example:
 }
 ```
 
+Ready-to-use samples are in `examples/`:
+
+- `examples/ztis.config.min.json`
+- `examples/ztis.config.min.yaml`
+
+Use one quickly:
+
+```bash
+# JSON
+node dist/cli.js config --validate -c ./examples/ztis.config.min.json
+
+# YAML
+node dist/cli.js config --validate -c ./examples/ztis.config.min.yaml --output yaml
+```
+
 Environment overrides (precedence: env > file):
 
 - `ZTIS_SERVER_PORT=4000`
@@ -161,6 +176,8 @@ env:
 	ZTIS_SCANNER_PARALLEL: '4'
 	ZTIS_SERVER_PORT: '4000'
 ```
+
+You can also run a safe, on-demand pipeline: `.github/workflows/manual-ci.yml` (trigger with “Run workflow” in GitHub Actions).
 
 ## 🤝 Contributing
 
