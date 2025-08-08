@@ -5,6 +5,7 @@
 
 import * as winston from 'winston';
 import * as path from 'path';
+import * as fs from 'fs';
 
 export interface LogMetadata {
   component?: string;
@@ -19,6 +20,33 @@ export class Logger {
   private winston: winston.Logger;
 
   private constructor() {
+    const isTest = process.env.NODE_ENV === 'test';
+
+    // Console transport (always enabled)
+    const consoleTransport = new winston.transports.Console({
+      format: winston.format.combine(
+        winston.format.colorize(),
+        winston.format.simple(),
+        winston.format.printf(({ timestamp, level, message, ...meta }) => {
+          const metaStr = Object.keys(meta).length ? JSON.stringify(meta, null, 2) : '';
+          return `${timestamp} [${level}]: ${message} ${metaStr}`;
+        })
+      )
+    });
+
+    // File transports (disabled in test to avoid open handles)
+    const fileTransports: winston.transport[] = isTest
+      ? []
+      : [
+          new winston.transports.File({
+            filename: path.join(process.cwd(), 'logs', 'ztis-error.log'),
+            level: 'error'
+          }),
+          new winston.transports.File({
+            filename: path.join(process.cwd(), 'logs', 'ztis-combined.log')
+          })
+        ];
+
     this.winston = winston.createLogger({
       level: process.env.LOG_LEVEL || 'info',
       format: winston.format.combine(
@@ -31,46 +59,27 @@ export class Logger {
         service: 'zero-trust-scanner',
         version: process.env.npm_package_version || '1.0.0'
       },
-      transports: [
-        // Console output
-        new winston.transports.Console({
-          format: winston.format.combine(
-            winston.format.colorize(),
-            winston.format.simple(),
-            winston.format.printf(({ timestamp, level, message, ...meta }) => {
-              const metaStr = Object.keys(meta).length ? JSON.stringify(meta, null, 2) : '';
-              return `${timestamp} [${level}]: ${message} ${metaStr}`;
+      transports: [consoleTransport, ...fileTransports],
+      exceptionHandlers: isTest
+        ? []
+        : [
+            new winston.transports.File({
+              filename: path.join(process.cwd(), 'logs', 'ztis-exceptions.log')
             })
-          )
-        }),
-        
-        // File output
-        new winston.transports.File({ 
-          filename: path.join(process.cwd(), 'logs', 'ztis-error.log'), 
-          level: 'error' 
-        }),
-        new winston.transports.File({ 
-          filename: path.join(process.cwd(), 'logs', 'ztis-combined.log') 
-        })
-      ],
-      
-      // Handle uncaught exceptions
-      exceptionHandlers: [
-        new winston.transports.File({ 
-          filename: path.join(process.cwd(), 'logs', 'ztis-exceptions.log') 
-        })
-      ],
-      
-      // Handle unhandled promise rejections
-      rejectionHandlers: [
-        new winston.transports.File({ 
-          filename: path.join(process.cwd(), 'logs', 'ztis-rejections.log') 
-        })
-      ]
+          ],
+      rejectionHandlers: isTest
+        ? []
+        : [
+            new winston.transports.File({
+              filename: path.join(process.cwd(), 'logs', 'ztis-rejections.log')
+            })
+          ]
     });
 
-    // Create logs directory if it doesn't exist
-    this.ensureLogDirectory();
+    // Create logs directory only when file transports are used
+    if (!isTest) {
+      this.ensureLogDirectory();
+    }
   }
 
   /**
@@ -87,7 +96,6 @@ export class Logger {
    * Ensure logs directory exists
    */
   private ensureLogDirectory(): void {
-    const fs = require('fs');
     const logsDir = path.join(process.cwd(), 'logs');
     if (!fs.existsSync(logsDir)) {
       fs.mkdirSync(logsDir, { recursive: true });
@@ -210,5 +218,29 @@ export class Logger {
     const childLogger = new Logger();
     childLogger.winston = this.winston.child(defaultMeta);
     return childLogger;
+  }
+
+  /**
+   * Close all logger transports to release resources (useful for tests)
+   */
+  public close(): void {
+    // winston@3 logger exposes close() to close all transports
+    try {
+      this.winston.close();
+    } catch {
+      // no-op
+    }
+    // Best-effort: ensure each transport is closed
+    for (const t of this.winston.transports) {
+      // Some transports expose close()
+      try {
+        const maybeAny: unknown = t as unknown;
+        if (maybeAny && typeof (maybeAny as { close?: () => void }).close === 'function') {
+          (maybeAny as { close: () => void }).close();
+        }
+      } catch {
+        // ignore
+      }
+    }
   }
 }
