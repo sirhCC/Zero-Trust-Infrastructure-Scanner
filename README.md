@@ -119,6 +119,7 @@ Ready-to-use samples are in `examples/`:
 
 - `examples/ztis.config.min.json`
 - `examples/ztis.config.min.yaml`
+- `examples/test-data/` (sample findings, business context, historical scores)
 
 Use one quickly:
 
