@@ -230,15 +230,18 @@ program
   .option('-r, --role <role>', 'Specific role to analyze')
   .option('--include-service-accounts', 'Include service accounts in analysis')
   .option('--privilege-threshold <level>', 'Privilege risk threshold (low|medium|high)', 'medium')
-  .action(async (options) => {
-    console.log(chalk.blue('🔍 Identity Permission Mining'));
-    console.log(chalk.gray('Provider:'), options.provider || 'Auto-detect');
-    
+  .option('--out-file <file>', 'Write command output to file (respects --output)')
+  .option('--fail-on <severity>', 'Exit non-zero if findings at/above severity exist (low|medium|high|critical)')
+  .action(async (options, cmd) => {
     try {
   // Load configuration
   const { ConfigManager } = await import('./config/config-manager');
   const cfgMgr = ConfigManager.getInstance();
-  const rootOpts = program.opts();
+  const rootOpts = (cmd as any)?.optsWithGlobals?.() || program.opts();
+  if (rootOpts.output === 'table') {
+    console.log(chalk.blue('🔍 Identity Permission Mining'));
+    console.log(chalk.gray('Provider:'), options.provider || 'Auto-detect');
+  }
   await cfgMgr.initialize(rootOpts.config || './ztis.config.json');
   const cfg = cfgMgr.getConfig();
 
@@ -272,14 +275,27 @@ program
         scanOpts.timeoutMs = cfg.scanner.scanTimeout;
       }
       const result = await scanner.scan(target, scanOpts);
-      
-      // Display results
-      console.log(chalk.green(`✅ Scan completed in ${result.duration}ms`));
-      console.log(chalk.gray(`Scan ID: ${result.id}`));
-      console.log(chalk.gray(`Findings: ${result.findings.length}`));
-      
-      // Display findings summary
-      if (result.findings.length > 0) {
+
+      // Output formatting (json|yaml|table)
+      if (rootOpts.output && rootOpts.output !== 'table') {
+        const payload = rootOpts.output === 'yaml' ? YAML.stringify(result) : JSON.stringify(result, null, 2);
+        if (options.outFile) {
+          const dir = path.dirname(options.outFile);
+          if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+          fs.writeFileSync(options.outFile, payload, 'utf8');
+          console.error(chalk.gray(`Output written to ${options.outFile}`));
+        } else {
+          console.log(payload);
+        }
+      } else {
+        // Display results (table mode)
+        console.log(chalk.green(`✅ Scan completed in ${result.duration}ms`));
+        console.log(chalk.gray(`Scan ID: ${result.id}`));
+        console.log(chalk.gray(`Findings: ${result.findings.length}`));
+      }
+
+      // Display findings summary (table mode only)
+      if (rootOpts.output === 'table' && result.findings.length > 0) {
         console.log('\n' + chalk.bold('Identity Security Findings:'));
         
         // Group findings by severity
@@ -313,8 +329,13 @@ program
             });
           }
         });
-      } else {
+      } else if (rootOpts.output === 'table') {
         console.log(chalk.green('\n✅ No identity security issues found!'));
+      }
+      // Fail on severity threshold if requested
+      if (shouldFailBySeverity(result.findings as any, options.failOn)) {
+        console.error(chalk.red('Failing due to severity threshold.'));
+        process.exit(1);
       }
       
     } catch (error) {
@@ -335,15 +356,18 @@ program
   .option('-r, --registry <registry>', 'Container registry to scan')
   .option('--severity <level>', 'Minimum vulnerability severity (low|medium|high|critical)', 'medium')
   .option('--include-dev-deps', 'Include development dependencies')
-  .action(async (options) => {
-    console.log(chalk.blue('🔍 Supply Chain Security Analysis'));
-    console.log(chalk.gray('Target:'), options.image || options.file || 'Current directory');
-    
+  .option('--out-file <file>', 'Write command output to file (respects --output)')
+  .option('--fail-on <severity>', 'Exit non-zero if findings at/above severity exist (low|medium|high|critical)')
+  .action(async (options, cmd) => {
     try {
   // Load configuration
   const { ConfigManager } = await import('./config/config-manager');
   const cfgMgr = ConfigManager.getInstance();
-  const rootOpts = program.opts();
+  const rootOpts = (cmd as any)?.optsWithGlobals?.() || program.opts();
+  if (rootOpts.output === 'table') {
+    console.log(chalk.blue('🔍 Supply Chain Security Analysis'));
+    console.log(chalk.gray('Target:'), options.image || options.file || 'Current directory');
+  }
   await cfgMgr.initialize(rootOpts.config || './ztis.config.json');
   const cfg = cfgMgr.getConfig();
 
@@ -378,14 +402,27 @@ program
         scanOpts.timeoutMs = cfg.scanner.scanTimeout;
       }
       const result = await scanner.scan(target, scanOpts);
-      
-      // Display results
-      console.log(chalk.green(`✅ Scan completed in ${result.duration}ms`));
-      console.log(chalk.gray(`Scan ID: ${result.id}`));
-      console.log(chalk.gray(`Findings: ${result.findings.length}`));
-      
-      // Display findings summary
-      if (result.findings.length > 0) {
+
+      // Output formatting (json|yaml|table)
+      if (rootOpts.output && rootOpts.output !== 'table') {
+        const payload = rootOpts.output === 'yaml' ? YAML.stringify(result) : JSON.stringify(result, null, 2);
+        if (options.outFile) {
+          const dir = path.dirname(options.outFile);
+          if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+          fs.writeFileSync(options.outFile, payload, 'utf8');
+          console.error(chalk.gray(`Output written to ${options.outFile}`));
+        } else {
+          console.log(payload);
+        }
+      } else {
+        // Display results (table mode)
+        console.log(chalk.green(`✅ Scan completed in ${result.duration}ms`));
+        console.log(chalk.gray(`Scan ID: ${result.id}`));
+        console.log(chalk.gray(`Findings: ${result.findings.length}`));
+      }
+
+      // Display findings summary (table mode only)
+      if (rootOpts.output === 'table' && result.findings.length > 0) {
         console.log('\n' + chalk.bold('Supply Chain Security Findings:'));
         
         // Group findings by severity
@@ -442,8 +479,13 @@ program
           }
         }
         
-      } else {
+      } else if (rootOpts.output === 'table') {
         console.log(chalk.green('\n✅ No supply chain security issues found!'));
+      }
+      // Fail on severity threshold if requested
+      if (shouldFailBySeverity(result.findings as any, options.failOn)) {
+        console.error(chalk.red('Failing due to severity threshold.'));
+        process.exit(1);
       }
       
     } catch (error) {
@@ -462,15 +504,18 @@ program
   .option('-e, --environment <env>', 'Target environment (dev|staging|prod)')
   .option('--exclude-controls <controls>', 'Comma-separated list of controls to exclude')
   .option('--report-format <format>', 'Report format (pdf|html|json)', 'html')
-  .action(async (options) => {
-    console.log(chalk.blue('🔍 Compliance Automation'));
-    console.log(chalk.gray('Standards:'), options.standard);
-    
+  .option('--out-file <file>', 'Write command output to file (respects --output)')
+  .option('--fail-on <severity>', 'Exit non-zero if findings at/above severity exist (low|medium|high|critical)')
+  .action(async (options, cmd) => {
     try {
   // Load configuration
   const { ConfigManager } = await import('./config/config-manager');
   const cfgMgr = ConfigManager.getInstance();
-  const rootOpts = program.opts();
+  const rootOpts = (cmd as any)?.optsWithGlobals?.() || program.opts();
+  if (rootOpts.output === 'table') {
+    console.log(chalk.blue('🔍 Compliance Automation'));
+    console.log(chalk.gray('Standards:'), options.standard);
+  }
   await cfgMgr.initialize(rootOpts.config || './ztis.config.json');
   const cfg = cfgMgr.getConfig();
 
@@ -505,14 +550,27 @@ program
         scanOpts.timeoutMs = cfg.scanner.scanTimeout;
       }
       const result = await scanner.scan(target, scanOpts);
-      
-      // Display results
-      console.log(chalk.green(`✅ Scan completed in ${result.duration}ms`));
-      console.log(chalk.gray(`Scan ID: ${result.id}`));
-      console.log(chalk.gray(`Findings: ${result.findings.length}`));
-      
-      // Display findings summary
-      if (result.findings.length > 0) {
+
+      // Output formatting (json|yaml|table)
+      if (rootOpts.output && rootOpts.output !== 'table') {
+        const payload = rootOpts.output === 'yaml' ? YAML.stringify(result) : JSON.stringify(result, null, 2);
+        if (options.outFile) {
+          const dir = path.dirname(options.outFile);
+          if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+          fs.writeFileSync(options.outFile, payload, 'utf8');
+          console.error(chalk.gray(`Output written to ${options.outFile}`));
+        } else {
+          console.log(payload);
+        }
+      } else {
+        // Display results (table mode)
+        console.log(chalk.green(`✅ Scan completed in ${result.duration}ms`));
+        console.log(chalk.gray(`Scan ID: ${result.id}`));
+        console.log(chalk.gray(`Findings: ${result.findings.length}`));
+      }
+
+      // Display findings summary (table mode only)
+      if (rootOpts.output === 'table' && result.findings.length > 0) {
         console.log('\n' + chalk.bold('Compliance Findings:'));
         
         // Group findings by severity
@@ -580,8 +638,13 @@ program
           console.log(chalk.green('\n✅ No critical compliance issues found'));
         }
         
-      } else {
+      } else if (rootOpts.output === 'table') {
         console.log(chalk.green('\n✅ No compliance issues found! 🎉'));
+      }
+      // Fail on severity threshold if requested
+      if (shouldFailBySeverity(result.findings as any, options.failOn)) {
+        console.error(chalk.red('Failing due to severity threshold.'));
+        process.exit(1);
       }
       
     } catch (error) {
