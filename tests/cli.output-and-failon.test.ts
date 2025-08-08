@@ -4,7 +4,7 @@ import { spawnSync } from 'child_process';
 
 describe('CLI output and fail-on behavior', () => {
   const distCli = path.join(__dirname, '..', 'dist', 'cli.js');
-  const outFile = path.join(__dirname, 'test-data', 'cli-output.json');
+  const outFile = path.join(__dirname, '..', 'examples', 'test-data', 'cli-output.json');
 
   beforeAll(() => {
     if (!fs.existsSync(path.dirname(outFile))) fs.mkdirSync(path.dirname(outFile), { recursive: true });
