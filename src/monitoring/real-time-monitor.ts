@@ -63,6 +63,9 @@ export interface WebSocketConfig {
   max_connections: number;
   token?: string; // optional static token for simple auth
   token_header?: string; // optional header name for token (default: x-ztis-token)
+  jwt_secret?: string; // optional shared secret for verifying JWTs
+  jwt_issuer?: string; // optional expected JWT issuer
+  jwt_audience?: string; // optional expected JWT audience
 }
 
 export interface ChangeDetectionConfig {
@@ -265,7 +268,7 @@ export class RealTimeMonitor extends EventEmitter {
       perMessageDeflate: { threshold: 1024 }
     });
 
-    this.wsServer.on('connection', (ws: WebSocket, request: any) => {
+  this.wsServer.on('connection', async (ws: WebSocket, request: any) => {
       const clientIp = request.socket.remoteAddress;
       // Enforce connection limits
       const max = this.config.websocket.max_connections || 100;
@@ -274,20 +277,42 @@ export class RealTimeMonitor extends EventEmitter {
         logger.warn(`WebSocket connection refused (limit ${max}) from ${clientIp}`);
         return;
       }
-      // Simple token auth if enabled
+      // Simple token/JWT auth if enabled
       if (this.config.websocket.authentication) {
         try {
           const headerName = (this.config.websocket.token_header || process.env.ZTIS_WS_TOKEN_HEADER || 'x-ztis-token').toLowerCase();
           const headerToken = (request.headers && (request.headers[headerName] as string)) || '';
+          const authzHeader = (request.headers && (request.headers['authorization'] as string)) || '';
           let urlToken = '';
           try {
             const fullUrl = new URL(request.url || '/', 'http://localhost');
             urlToken = fullUrl.searchParams.get('token') || '';
           } catch { /* ignore URL parse errors */ }
 
-          const expected = this.config.websocket.token || process.env.ZTIS_WS_TOKEN || '';
-          const provided = headerToken || urlToken;
-          if (!expected || provided !== expected) {
+          const staticExpected = this.config.websocket.token || process.env.ZTIS_WS_TOKEN || '';
+          const jwtSecret = this.config.websocket.jwt_secret || process.env.ZTIS_WS_JWT_SECRET || '';
+          const provided = (authzHeader && authzHeader.toLowerCase().startsWith('bearer ') ? authzHeader.slice(7).trim() : '') || headerToken || urlToken;
+
+          let authorized = false;
+          // Prefer JWT if secret is configured and token looks like JWT
+          if (jwtSecret && provided && provided.split('.').length === 3) {
+            try {
+              // Lazy import to avoid cost if not used
+              const jwt = await import('jsonwebtoken');
+              const verifyOpts: any = {};
+              if (this.config.websocket.jwt_issuer || process.env.ZTIS_WS_JWT_ISSUER) verifyOpts.issuer = this.config.websocket.jwt_issuer || process.env.ZTIS_WS_JWT_ISSUER;
+              if (this.config.websocket.jwt_audience || process.env.ZTIS_WS_JWT_AUDIENCE) verifyOpts.audience = this.config.websocket.jwt_audience || process.env.ZTIS_WS_JWT_AUDIENCE;
+              (jwt as any).verify(provided, jwtSecret, verifyOpts);
+              authorized = true;
+            } catch (e) {
+              authorized = false;
+            }
+          }
+          // Fallback to static token match
+          if (!authorized && staticExpected) {
+            if (provided && provided === staticExpected) authorized = true;
+          }
+          if (!authorized) {
             try { ws.close(1008, 'Invalid or missing auth token'); } catch { /* ignore close error */ }
             logger.warn(`❌ WebSocket auth failed for ${clientIp}`);
             return;
