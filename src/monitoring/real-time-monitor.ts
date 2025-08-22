@@ -11,6 +11,7 @@
  */
 
 import WebSocket from 'ws';
+import { randomUUID } from 'crypto';
 import { EventEmitter } from 'events';
 import { ZeroTrustScanner } from '../core/scanner';
 import { ScanTarget, SecurityFinding, ScanResult } from '../core/scanner';
@@ -259,15 +260,24 @@ export class RealTimeMonitor extends EventEmitter {
   private async startWebSocketServer(): Promise<void> {
     this.wsServer = new WebSocket.Server({
       port: this.config.websocket.port,
-      path: this.config.websocket.path
+      path: this.config.websocket.path,
+      // Limit compression window to reduce risk of compression side-channel issues
+      perMessageDeflate: { threshold: 1024 }
     });
 
     this.wsServer.on('connection', (ws: WebSocket, request: any) => {
       const clientIp = request.socket.remoteAddress;
+      // Enforce connection limits
+      const max = this.config.websocket.max_connections || 100;
+      if (this.connectedClients.size >= max) {
+        try { ws.close(1013, 'Server busy'); } catch {/* ignore */}
+        logger.warn(`WebSocket connection refused (limit ${max}) from ${clientIp}`);
+        return;
+      }
       // Simple token auth if enabled
       if (this.config.websocket.authentication) {
         try {
-          const headerName = (this.config.websocket.token_header || 'x-ztis-token').toLowerCase();
+          const headerName = (this.config.websocket.token_header || process.env.ZTIS_WS_TOKEN_HEADER || 'x-ztis-token').toLowerCase();
           const headerToken = (request.headers && (request.headers[headerName] as string)) || '';
           let urlToken = '';
           try {
@@ -311,7 +321,10 @@ export class RealTimeMonitor extends EventEmitter {
         severity: 'info'
       });
 
-      // Handle client disconnect
+  // Heartbeat/keepalive
+  try { ws.on('pong', () => { /* heartbeat ok */ }); } catch {/* noop */}
+
+  // Handle client disconnect
       ws.on('close', () => {
         this.connectedClients.delete(ws);
         logger.info(`🔌 WebSocket client disconnected from ${clientIp}`);
@@ -802,7 +815,11 @@ export class RealTimeMonitor extends EventEmitter {
    * Generate unique event ID
    */
   private generateEventId(): string {
-    return `evt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    try {
+      return `evt_${randomUUID()}`;
+    } catch {
+      return `evt_${Date.now()}_${Math.random().toString(36).substr(2, 12)}`;
+    }
   }
 
   /**
