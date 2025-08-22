@@ -4,6 +4,7 @@
  */
 
 import { SCANNER_CONFIGS } from './scanner-config';
+import { randomUUID } from 'crypto';
 import { ScannerResultProcessor } from './scanner-result-processor';
 import { applyComplianceMapping } from '../compliance/mapping';
 import * as fs from 'fs';
@@ -209,16 +210,22 @@ export class ZeroTrustScanner {
     const lines: string[] = [
       'id,severity,category,title,standard,control,impact'
     ];
+    const sanitizeForCSV = (value: string) => {
+      // Prevent CSV formula injection in spreadsheet tools
+      // If cell starts with =, +, -, or @, prefix with a single quote
+      if (/^[=+\-@]/.test(value)) return `'${value}`;
+      return value;
+    };
     for (const f of result.findings) {
       const impacts = f.compliance_impact && f.compliance_impact.length > 0 ? f.compliance_impact : [{ standard: '' as any, control: '', impact: '' as any }];
       for (const c of impacts) {
         const row = [
-          JSON.stringify(f.id),
+          JSON.stringify(sanitizeForCSV(String(f.id))),
           f.severity,
-          JSON.stringify(f.category),
-          JSON.stringify(f.title),
+          JSON.stringify(sanitizeForCSV(String(f.category))),
+          JSON.stringify(sanitizeForCSV(String(f.title))),
           c.standard || '',
-          JSON.stringify(c.control || ''),
+          JSON.stringify(sanitizeForCSV(String(c.control || ''))),
           c.impact || ''
         ].join(',');
         lines.push(row);
@@ -400,7 +407,13 @@ export class ZeroTrustScanner {
    * Generate unique scan ID
    */
   private generateScanId(): string {
-    return `scan_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    try {
+      const ts = Date.now();
+      const rand = randomUUID().replace(/-/g, '');
+      return `scan_${ts}_${rand}`;
+    } catch {
+      return `scan_${Date.now()}_${Math.random().toString(36).substr(2, 12)}`;
+    }
   }
 
   /**
