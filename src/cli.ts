@@ -800,6 +800,12 @@ program
         const allowHeaders = 'Content-Type, X-ZTIS-Token';
         const allowOrigin = '*';
         const allowMethods = 'GET, OPTIONS';
+        const securityHeaders: Record<string, string> = {
+          'X-Content-Type-Options': 'nosniff',
+          'X-Frame-Options': 'DENY',
+          'Referrer-Policy': 'no-referrer',
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
+        };
         try {
           if (req.method === 'OPTIONS') {
             res.writeHead(204, {
@@ -812,11 +818,20 @@ program
           }
           const url = new URL(req.url || '/', `http://localhost:${parseInt(options.port) + 1}`);
           if (url.pathname === '/api/status') {
+            // Optional token check for status endpoint
+            const expected = process.env.ZTIS_STATUS_TOKEN || process.env.ZTIS_WS_TOKEN || '';
+            const provided = req.headers['x-ztis-token'] as string || url.searchParams.get('token') || '';
+            if (expected && provided !== expected) {
+              res.writeHead(401, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': allowOrigin, ...securityHeaders });
+              res.end(JSON.stringify({ ok: false, error: 'Unauthorized' }));
+              return;
+            }
             const stats = monitor.getMonitoringStats();
             res.writeHead(200, {
               'Content-Type': 'application/json',
               'Cache-Control': 'no-cache',
               'Access-Control-Allow-Origin': allowOrigin,
+              ...securityHeaders,
             });
             res.end(JSON.stringify({ ok: true, stats }));
             return;
@@ -824,11 +839,13 @@ program
           // 404 otherwise
           res.writeHead(404, {
             'Access-Control-Allow-Origin': allowOrigin,
+            ...securityHeaders,
           });
           res.end('Not found');
         } catch (e: any) {
           res.writeHead(500, {
             'Access-Control-Allow-Origin': allowOrigin,
+            ...securityHeaders,
           });
           res.end('Error');
         }
@@ -1271,16 +1288,19 @@ program
 </body>
 </html>`;
       
-      const server = http.createServer(async (_req: any, res: any) => {
+    const server = http.createServer(async (_req: any, res: any) => {
         try {
           const url = new URL(_req.url || '/', `http://localhost:${options.port}`);
           if (url.pathname === '/api/status') {
             // Proxy to monitor status API (monitorPort + 1)
             try {
               const target = `http://localhost:${parseInt(options.monitorPort) + 1}/api/status`;
-              const resp = await fetch(target);
+        const headers: any = {};
+        const token = options.wsToken || process.env.ZTIS_STATUS_TOKEN || '';
+        if (token) headers['x-ztis-token'] = token;
+        const resp = await fetch(target, { headers });
               const body = await resp.text();
-              res.writeHead(resp.status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' });
+        res.writeHead(resp.status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' });
               res.end(body);
             } catch (e) {
               res.writeHead(502, { 'Content-Type': 'application/json' });
@@ -1288,7 +1308,7 @@ program
             }
             return;
           }
-          res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.writeHead(200, { 'Content-Type': 'text/html', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' });
           res.end(dashboardHtml);
         } catch {
           res.writeHead(500);
