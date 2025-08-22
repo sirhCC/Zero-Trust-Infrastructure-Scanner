@@ -59,8 +59,8 @@ export class Logger {
     const consoleTransport = new winston.transports.Console({
       silent: process.env.ZTIS_QUIET === '1',
       format: winston.format.combine(
+        // Colorize console output only on the console transport
         winston.format.colorize(),
-        winston.format.simple(),
         winston.format.printf(({ timestamp, level, message, ...meta }) => {
           const metaStr = Object.keys(meta).length ? JSON.stringify(meta, null, 2) : '';
           return `${timestamp} [${level}]: ${message} ${metaStr}`;
@@ -74,10 +74,13 @@ export class Logger {
       : [
           new winston.transports.File({
             filename: path.join(process.cwd(), 'logs', 'ztis-error.log'),
-            level: 'error'
+            level: 'error',
+            // Structured JSON for files (no colorize)
+            format: winston.format.json()
           }),
           new winston.transports.File({
-            filename: path.join(process.cwd(), 'logs', 'ztis-combined.log')
+            filename: path.join(process.cwd(), 'logs', 'ztis-combined.log'),
+            format: winston.format.json()
           })
         ];
 
@@ -105,13 +108,12 @@ export class Logger {
     });
 
     this.winston = winston.createLogger({
-  level: process.env.ZTIS_LOGGING_LEVEL || process.env.LOG_LEVEL || 'info',
+      level: process.env.ZTIS_LOGGING_LEVEL || process.env.LOG_LEVEL || 'info',
+      // Apply redaction and timestamp globally; avoid global colorize/json to prevent conflicts
       format: winston.format.combine(
         redactionFormat(),
         winston.format.timestamp(),
-        winston.format.errors({ stack: true }),
-        winston.format.json(),
-        winston.format.colorize({ all: true })
+        winston.format.errors({ stack: true })
       ),
       defaultMeta: {
         service: 'zero-trust-scanner',
@@ -122,14 +124,16 @@ export class Logger {
         ? []
         : [
             new winston.transports.File({
-              filename: path.join(process.cwd(), 'logs', 'ztis-exceptions.log')
+              filename: path.join(process.cwd(), 'logs', 'ztis-exceptions.log'),
+              format: winston.format.json()
             })
           ],
       rejectionHandlers: isTest
         ? []
         : [
             new winston.transports.File({
-              filename: path.join(process.cwd(), 'logs', 'ztis-rejections.log')
+              filename: path.join(process.cwd(), 'logs', 'ztis-rejections.log'),
+              format: winston.format.json()
             })
           ]
     });
