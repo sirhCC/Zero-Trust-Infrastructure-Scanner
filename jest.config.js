@@ -5,11 +5,7 @@
 module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
-  globals: {
-    'ts-jest': {
-      tsconfig: 'tsconfig.jest.json'
-    }
-  },
+  // ts-jest config should be provided via transform options (globals is deprecated)
   
   // Root directories
   roots: ['<rootDir>/src', '<rootDir>/tests'],
@@ -22,7 +18,7 @@ module.exports = {
   
   // Transform files
   transform: {
-    '^.+\\.ts$': 'ts-jest'
+  '^.+\\.ts$': ['ts-jest', { tsconfig: 'tsconfig.jest.json' }]
   },
   
   // Coverage configuration
