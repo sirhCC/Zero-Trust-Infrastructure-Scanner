@@ -7,6 +7,39 @@ import * as winston from 'winston';
 import * as path from 'path';
 import * as fs from 'fs';
 
+// Keys to redact in logs (case-insensitive)
+const SENSITIVE_KEYS = new Set([
+  'authorization',
+  'token',
+  'x-ztis-token',
+  'password',
+  'pass',
+  'secret',
+  'apiKey',
+  'api-key',
+  'access_key',
+  'access-key',
+  'client_secret',
+  'client-secret',
+].map((k) => k.toLowerCase()));
+
+function redactSensitive(input: any): any {
+  if (input == null) return input;
+  if (Array.isArray(input)) return input.map(redactSensitive);
+  if (typeof input === 'object') {
+    const out: any = {};
+    for (const [k, v] of Object.entries(input)) {
+      if (SENSITIVE_KEYS.has(k.toLowerCase())) {
+        out[k] = '[REDACTED]';
+      } else {
+        out[k] = redactSensitive(v);
+      }
+    }
+    return out;
+  }
+  return input;
+}
+
 export interface LogMetadata {
   component?: string;
   scanId?: string;
@@ -60,9 +93,21 @@ export class Logger {
       }
     }
 
+    const redactionFormat = winston.format((info) => {
+      try {
+        // Preserve standard fields
+        const { level, message, timestamp, ...rest } = info as any;
+        const redacted = redactSensitive(rest);
+        return { level, message, timestamp, ...redacted } as any;
+      } catch {
+        return info;
+      }
+    });
+
     this.winston = winston.createLogger({
   level: process.env.ZTIS_LOGGING_LEVEL || process.env.LOG_LEVEL || 'info',
       format: winston.format.combine(
+        redactionFormat(),
         winston.format.timestamp(),
         winston.format.errors({ stack: true }),
         winston.format.json(),
