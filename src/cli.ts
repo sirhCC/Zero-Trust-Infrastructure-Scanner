@@ -855,9 +855,10 @@ program
         console.log(chalk.blue(`📊 Status API listening on http://localhost:${statusPort}/api/status`));
       });
       
-      console.log(chalk.green('🚀 Monitoring active!'));
-      console.log(chalk.blue(`📡 WebSocket server listening on port ${options.port}`));
-      console.log(chalk.gray('📊 Connect to the dashboard at:'), chalk.cyan(`ws://localhost:${options.port}`));
+  console.log(chalk.green('🚀 Monitoring active!'));
+  console.log(chalk.blue(`📡 WebSocket server listening on port ${options.port}`));
+  // Show the exact WS URL including the path expected by clients
+  console.log(chalk.gray('📊 Dashboard WebSocket endpoint:'), chalk.cyan(`ws://localhost:${options.port}/ws`));
       console.log(chalk.gray('⚡ Monitoring targets:'), targets.join(', '));
       console.log(chalk.yellow('🛑 Press Ctrl+C to stop monitoring'));
       
@@ -1131,22 +1132,35 @@ program
     }
 
     function connect() {
-      const url = 'ws://localhost:${options.monitorPort}/ws' + (${options.wsToken ? '"?token=' + encodeURIComponent("${options.wsToken}") + '"' : "''"});
-      ws = new WebSocket(url);
+      const primary = 'ws://localhost:${options.monitorPort}/ws' + (${options.wsToken ? '"?token=' + encodeURIComponent("${options.wsToken}") + '"' : "''"});
+      const fallback = 'ws://localhost:${options.monitorPort}/' + (${options.wsToken ? '"?token=' + encodeURIComponent("${options.wsToken}") + '"' : "''"});
+      let attemptedFallback = false;
+      try {
+        const s = document.getElementById('status');
+        if (s) s.textContent = 'Connecting to ' + primary + ' ...';
+      } catch {}
+      ws = new WebSocket(primary);
             
-            ws.onopen = function() {
+      ws.onopen = function() {
                 document.getElementById('connection-status').className = 'connection-status connected';
-                document.getElementById('connection-status').innerHTML = '✅ Connected to monitor';
-                document.getElementById('status').textContent = 'Connected - Receiving live updates';
+        document.getElementById('connection-status').innerHTML = '✅ Connected to monitor';
+        document.getElementById('status').textContent = 'Connected - Receiving live updates';
             };
             
-            ws.onclose = function() {
+            ws.onclose = function(ev) {
                 document.getElementById('connection-status').className = 'connection-status disconnected';
-                document.getElementById('connection-status').innerHTML = '❌ Disconnected from monitor';
+                document.getElementById('connection-status').innerHTML = '❌ Disconnected from monitor' + (ev && ev.code ? ' (code ' + ev.code + ')' : '');
                 document.getElementById('status').textContent = 'Disconnected - Attempting to reconnect...';
                 
                 // Reconnect after 3 seconds
-                setTimeout(connect, 3000);
+                setTimeout(() => {
+                  if (!attemptedFallback) {
+                    attemptedFallback = true;
+                    try { ws = new WebSocket(fallback); } catch {}
+                  } else {
+                    connect();
+                  }
+                }, 3000);
             };
             
             ws.onmessage = function(event) {
