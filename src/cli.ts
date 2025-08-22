@@ -9,6 +9,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import * as YAML from 'yaml';
 import * as fs from 'fs';
+import * as crypto from 'crypto';
 import * as path from 'path';
 // Importing version directly from package.json can be problematic when bundling; guard and fallback to env
 let version: string = '0.0.0';
@@ -900,7 +901,7 @@ program
       // Simple HTTP server for dashboard
       const http = await import('http');
       
-      const dashboardHtml = `
+  const dashboardHtml = `
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1020,7 +1021,7 @@ program
         </div>
     </div>
     
-    <script>
+  <script nonce="__NONCE__">
         let ws;
         let eventCount = 0;
         let criticalCount = 0;
@@ -1298,13 +1299,27 @@ program
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     });
-    </script>
+  </script>
 </body>
 </html>`;
       
     const server = http.createServer(async (_req: any, res: any) => {
         try {
           const url = new URL(_req.url || '/', `http://localhost:${options.port}`);
+          const nonce = crypto.randomBytes(16).toString('base64');
+          const monitorPort = parseInt(options.monitorPort);
+          const csp = [
+            "default-src 'self'",
+            `script-src 'self' 'nonce-${nonce}' https://cdn.jsdelivr.net`,
+            `connect-src 'self' ws://localhost:${monitorPort} http://localhost:${monitorPort + 1}`,
+            "img-src 'self' data:",
+            "style-src 'self' 'unsafe-inline'",
+            "font-src 'self'",
+            "frame-ancestors 'none'",
+            "object-src 'none'",
+            "base-uri 'none'",
+            "form-action 'none'"
+          ].join('; ');
           if (url.pathname === '/api/status') {
             // Proxy to monitor status API (monitorPort + 1)
             try {
@@ -1314,7 +1329,14 @@ program
         if (token) headers['x-ztis-token'] = token;
         const resp = await fetch(target, { headers });
               const body = await resp.text();
-        res.writeHead(resp.status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' });
+        res.writeHead(resp.status, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache',
+          'X-Content-Type-Options': 'nosniff',
+          'Referrer-Policy': 'no-referrer',
+          'X-Frame-Options': 'DENY',
+          'Content-Security-Policy': "default-src 'none'",
+        });
               res.end(body);
             } catch (e) {
               res.writeHead(502, { 'Content-Type': 'application/json' });
@@ -1322,8 +1344,15 @@ program
             }
             return;
           }
-      res.writeHead(200, { 'Content-Type': 'text/html', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' });
-          res.end(dashboardHtml);
+      res.writeHead(200, {
+        'Content-Type': 'text/html',
+        'X-Content-Type-Options': 'nosniff',
+        'Referrer-Policy': 'no-referrer',
+        'X-Frame-Options': 'DENY',
+        'Content-Security-Policy': csp,
+        'Permissions-Policy': 'geolocation=(), microphone=(), camera=()'
+      });
+          res.end(dashboardHtml.replace(/__NONCE__/g, nonce));
         } catch {
           res.writeHead(500);
           res.end('Server error');
