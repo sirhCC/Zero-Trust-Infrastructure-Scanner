@@ -5,6 +5,11 @@
 module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
+  globals: {
+    'ts-jest': {
+      tsconfig: 'tsconfig.jest.json'
+    }
+  },
   
   // Root directories
   roots: ['<rootDir>/src', '<rootDir>/tests'],
