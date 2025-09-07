@@ -1,11 +1,28 @@
 version: 2
 updates:
+  # NPM (root)
   - package-ecosystem: npm
     directory: '/'
     schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
+      interval: daily
+    open-pull-requests-limit: 20
+    versioning-strategy: increase
+    rebase-strategy: auto
+    security-updates: true
+    labels: [dependencies, npm]
+    commit-message:
+      prefix: 'build(deps)'
+    groups:
+      all-npm:
+        applies-to: version-updates
+        patterns: ['*']
+        update-types: ['major', 'minor', 'patch']
+
+  # GitHub Actions
   - package-ecosystem: github-actions
     directory: '/'
     schedule:
-      interval: weekly
+      interval: daily
+    open-pull-requests-limit: 20
+    rebase-strategy: auto
+    labels: [dependencies, github_actions]
