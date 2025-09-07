@@ -30,4 +30,4 @@ jobs:
 
       - name: Fail on high/critical vulnerabilities
         run: |
-          node -e "const fs=require('fs');const r=JSON.parse(fs.readFileSync('audit.json','utf8'));const advisories=(r.vulnerabilities)||{};const sev=['critical','high'];let fail=false;for(const [name,info] of Object.entries(advisories)){if(sev.includes(info.severity)){fail=true}};if(fail){console.error('High/Critical vulnerabilities found');process.exit(1)} else {console.log('No high/critical vulnerabilities')}}"
+          node -e "const fs=require('fs');let r;try{r=JSON.parse(fs.readFileSync('audit.json','utf8'))}catch(e){console.error('audit.json not found or invalid');process.exit(1)};const src=r.vulnerabilities||r.advisories||{};const list=Array.isArray(src)?src:Object.values(src);const fail=list.some(v=>['high','critical'].includes((v&&v.severity)||''));if(fail){console.error('High/Critical vulnerabilities found');process.exit(1)}else{console.log('No high/critical vulnerabilities')}"
