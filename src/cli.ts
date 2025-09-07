@@ -8,15 +8,12 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 // Removed unused imports moved into modular command files
-// Importing version directly from package.json can be problematic when bundling; guard and fallback to env
-let version: string = '0.0.0';
-try {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const pkg = require('../package.json');
-  version = pkg?.version || process.env.npm_package_version || version;
-} catch {
-  version = process.env.npm_package_version || version;
-}
+// Prefer a typed JSON import; fallback to env if somehow missing at runtime
+// TypeScript resolveJsonModule is enabled, so this is supported.
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import pkg from '../package.json';
+const version: string =
+  (pkg as { version?: string })?.version || process.env.npm_package_version || '0.0.0';
 import { createBehavioralCommands } from './cli/behavioral-commands';
 import { addRiskScoringCommands } from './cli/risk-commands';
 import mlRiskCommands from './cli/ml-risk-commands';
@@ -84,17 +81,20 @@ program
   .description('Run comprehensive zero-trust security scan')
   .option('-q, --quick', 'Quick scan mode (reduced depth)')
   .option('--parallel', 'Run scans in parallel for faster execution')
-  .option('--exclude <modules>', 'Exclude specific modules (network,identity,supply-chain,compliance)')
+  .option(
+    '--exclude <modules>',
+    'Exclude specific modules (network,identity,supply-chain,compliance)'
+  )
   .action(async (options) => {
     console.log(chalk.blue('🔍 Comprehensive Zero-Trust Security Scan'));
     console.log(chalk.gray('Mode:'), options.quick ? 'Quick' : 'Deep');
-    
+
     const modules = ['network', 'identity', 'supply-chain', 'compliance'];
     const excluded = options.exclude ? options.exclude.split(',') : [];
-    const activeModules = modules.filter(m => !excluded.includes(m));
-    
+    const activeModules = modules.filter((m) => !excluded.includes(m));
+
     console.log(chalk.gray('Active modules:'), activeModules.join(', '));
-    
+
     // TODO: Implement comprehensive scanning
     console.log(chalk.yellow('⚠️  Comprehensive scanning coming soon...'));
   });
