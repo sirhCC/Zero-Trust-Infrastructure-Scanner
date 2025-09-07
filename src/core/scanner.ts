@@ -3,18 +3,23 @@
  * Main orchestrator for all security scanning operations
  */
 
-import { SCANNER_CONFIGS } from './scanner-config';
+import { SCANNER_CONFIGS, ScannerConfig } from './scanner-config';
 import { randomUUID } from 'crypto';
 import { ScannerResultProcessor } from './scanner-result-processor';
 import { applyComplianceMapping } from '../compliance/mapping';
 import * as fs from 'fs';
 import * as path from 'path';
+import type { NetworkScanOptions } from '../scanners/network-scanner';
+import type { IdentityScanOptions } from '../scanners/identity-scanner';
+import type { SupplyChainScanOptions } from '../scanners/supply-chain-scanner';
+import type { ComplianceScanOptions } from '../scanners/compliance-scanner';
 
-export interface ScanTarget {
-  type: 'network' | 'identity' | 'supply-chain' | 'compliance' | 'comprehensive';
-  target: string;
-  options: Record<string, any>;
-}
+export type ScanTarget =
+  | { type: 'network'; target: string; options: NetworkScanOptions }
+  | { type: 'identity'; target: string; options: IdentityScanOptions }
+  | { type: 'supply-chain'; target: string; options: SupplyChainScanOptions }
+  | { type: 'compliance'; target: string; options: ComplianceScanOptions }
+  | { type: 'comprehensive'; target: string; options: Record<string, unknown> };
 
 export interface ScanResult {
   id: string;
@@ -32,7 +37,7 @@ export interface SecurityFinding {
   category: string;
   title: string;
   description: string;
-  evidence: any;
+  evidence: unknown;
   recommendation: string;
   compliance_impact?: ComplianceImpact[];
 }
@@ -53,7 +58,7 @@ export interface ScanMetrics {
 }
 
 export class ZeroTrustScanner {
-  private scanners: Map<string, any> = new Map();
+  private scanners: Map<string, ScannerConfig['className']> = new Map();
   private activeScans: Map<string, ScanResult> = new Map();
   private scanHistory: ScanResult[] = [];
   private isTestMode: boolean = false;
@@ -339,7 +344,7 @@ export class ZeroTrustScanner {
         }
         
         // Create sub-target for this scanner type
-        const subTarget = { ...target, type: scannerType as any };
+  const subTarget = { ...target, type: scannerType as unknown as ScanTarget['type'] } as ScanTarget;
         
         // Load and run scanner
         const scanner = await ScannerResultProcessor.loadScanner(config);

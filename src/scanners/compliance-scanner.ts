@@ -17,8 +17,8 @@ import { Logger } from '../utils/logger';
 const logger = Logger.getInstance();
 
 // Compliance-specific types
-interface ComplianceScanOptions {
-  frameworks?: ComplianceFramework[];
+export interface ComplianceScanOptions {
+  frameworks?: Array<Pick<ComplianceFramework, 'name'> | ComplianceFramework>;
   scope?: string[];
   evidence_collection?: boolean;
   auto_remediation?: boolean;
@@ -28,7 +28,7 @@ interface ComplianceScanOptions {
   custom_rules?: CustomRule[];
 }
 
-interface ComplianceFramework {
+export interface ComplianceFramework {
   name: string;
   version: string;
   controls: ComplianceControl[];

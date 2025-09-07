@@ -3,23 +3,28 @@
  * Utility class for processing scanner results and updating metrics
  */
 
-import { SecurityFinding, ScanMetrics } from './scanner';
+import { SecurityFinding, ScanMetrics, ScanTarget } from './scanner';
 import { ScannerConfig, DEFAULT_SCAN_CONFIG } from './scanner-config';
 
 export class ScannerResultProcessor {
   /**
    * Process findings from any scanner and convert to standardized format
    */
-  static processFindings(findings: any[]): SecurityFinding[] {
-    return findings.map(finding => ({
-      id: finding.id,
-      severity: finding.severity,
-      category: finding.category,
-      title: finding.title,
-      description: finding.description,
-      evidence: finding.evidence,
-      recommendation: finding.recommendation,
-      compliance_impact: finding.compliance_impact || []
+  static processFindings(findings: Array<SecurityFinding | (Partial<SecurityFinding> & Record<string, unknown>)>): SecurityFinding[] {
+    const ensureSeverity = (s: unknown): SecurityFinding['severity'] => {
+      return s === 'critical' || s === 'high' || s === 'medium' || s === 'low' || s === 'info' ? s : 'medium';
+    };
+    return findings.map((finding) => ({
+      id: String(
+        finding.id ?? `auto_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+      ),
+      severity: ensureSeverity(finding.severity),
+      category: String(finding.category ?? 'general'),
+      title: String(finding.title ?? 'Untitled finding'),
+      description: String(finding.description ?? ''),
+      evidence: finding.evidence ?? {},
+      recommendation: String(finding.recommendation ?? ''),
+  compliance_impact: (Array.isArray(finding.compliance_impact) ? finding.compliance_impact : []) as any
     }));
   }
 
@@ -50,7 +55,8 @@ export class ScannerResultProcessor {
   /**
    * Load and instantiate a scanner module
    */
-  static async loadScanner(config: ScannerConfig): Promise<any> {
+  static async loadScanner(config: ScannerConfig): Promise<{ scan(target: ScanTarget): Promise<SecurityFinding[]>; initialize?: () => Promise<void> }>
+  {
     // Use literal imports for known built-in scanners so packagers (e.g., pkg) can include them.
     // Fall back to dynamic import for custom modules in dev environments.
     let module: any;
@@ -74,12 +80,12 @@ export class ScannerResultProcessor {
         );
     }
     const ScannerClass = module[config.className];
-    const scanner = new ScannerClass();
+  const scanner: { scan(target: ScanTarget): Promise<SecurityFinding[]>; initialize?: () => Promise<void> } = new ScannerClass();
     
     if (config.requiresInitialization && scanner.initialize) {
       await scanner.initialize();
     }
     
-    return scanner;
+  return scanner;
   }
 }

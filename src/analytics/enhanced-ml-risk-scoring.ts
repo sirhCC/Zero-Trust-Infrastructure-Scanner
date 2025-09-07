@@ -139,23 +139,24 @@ export class EnhancedMLRiskScoringEngine {
     
     // Evidence-based adjustments
     if (finding.evidence) {
+      const ev = finding.evidence as Record<string, unknown>;
       // Remote exploitation possible
-      if (finding.evidence.remote_access || finding.evidence.external_access) {
+      if ((ev.remote_access as boolean) || (ev.external_access as boolean)) {
         baseScore += 15;
       }
       
       // Public exploits available
-      if (finding.evidence.public_exploit || finding.evidence.exploit_code) {
+      if ((ev.public_exploit as boolean) || (ev.exploit_code as boolean)) {
         baseScore += 20;
       }
       
       // Authentication required reduces exploitability
-      if (finding.evidence.authentication_required) {
+      if (ev.authentication_required as boolean) {
         baseScore -= 10;
       }
       
       // Network segmentation reduces exploitability
-      if (finding.evidence.network_segmented) {
+      if (ev.network_segmented as boolean) {
         baseScore -= 15;
       }
     }

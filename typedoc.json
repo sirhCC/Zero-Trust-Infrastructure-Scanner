@@ -1,0 +1,19 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": [
+    "src/index.ts",
+    "src/core/scanner.ts",
+    "src/core/scanner-result-processor.ts",
+    "src/core/scanner-config.ts"
+  ],
+  "out": "docs/api",
+  "excludePrivate": true,
+  "excludeProtected": false,
+  "excludeInternal": true,
+  "excludeExternals": false,
+  "gitRevision": "main",
+  "plugin": [],
+  "categorizeByGroup": false,
+  "sort": ["source-order"],
+  "includeVersion": true
+}
