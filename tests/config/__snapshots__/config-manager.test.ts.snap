@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`ConfigManager fails validation for invalid config (schema) 1`] = `"Configuration validation failed: "server.port" must be greater than or equal to 1"`;
 
