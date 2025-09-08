@@ -225,8 +225,8 @@ export class ZeroTrustScanner {
     const lines: string[] = ['id,severity,category,title,standard,control,impact'];
     const sanitizeForCSV = (value: string) => {
       // Prevent CSV formula injection in spreadsheet tools
-      // If cell starts with =, +, -, or @, prefix with a single quote
-      if (/^[=+\-@]/.test(value)) return `'${value}`;
+      // If cell (after optional leading whitespace) starts with =, +, -, or @, prefix with a single quote
+      if (/^\s*[=+\-@]/.test(value)) return `'${value}`;
       return value;
     };
     for (const f of result.findings) {
