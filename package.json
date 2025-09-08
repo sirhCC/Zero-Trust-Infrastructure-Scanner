@@ -68,7 +68,7 @@
     "joi": "^17.9.2",
     "jsonwebtoken": "^9.0.2",
     "node-cron": "^4.2.1",
-    "ora": "^5.4.1",
+    "ora": "^8.2.0",
     "regression": "^2.0.1",
     "simple-statistics": "^7.8.3",
     "winston": "^3.10.0",
