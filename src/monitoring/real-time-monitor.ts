@@ -50,6 +50,7 @@ export interface AlertingConfig {
     max_alerts_per_minute: number;
     cooldown_period: number;
   };
+  max_queue_size?: number; // cap in-memory alert queue (default 1000)
 }
 
 export interface AlertChannel {
@@ -130,6 +131,7 @@ export class RealTimeMonitor extends EventEmitter {
   private connectedClients: Set<WebSocket> = new Set();
   private monitoringIntervals: Map<string, NodeJS.Timeout> = new Map();
   private alertQueue: MonitoringEvent[] = [];
+  private alertQueueDropped: number = 0;
   private isRunning: boolean = false;
   private targetBaselines: Map<string, SecurityFinding[]> = new Map();
   private behavioralAnalysis: BehavioralMonitoringIntegration;
@@ -915,7 +917,7 @@ export class RealTimeMonitor extends EventEmitter {
         (event.severity === 'high' || event.severity === 'critical') &&
         this.shouldTriggerAlert(event.severity)
       ) {
-        this.alertQueue.push({
+        this.enqueueAlert({
           id: this.generateEventId(),
           timestamp: new Date(),
           type: 'alert_triggered',
@@ -969,8 +971,8 @@ export class RealTimeMonitor extends EventEmitter {
       severity: finding.severity,
     };
 
-    // Add to alert queue for processing
-    this.alertQueue.push(event);
+    // Add to alert queue for processing (bounded)
+    this.enqueueAlert(event);
 
     logger.warn(`🚨 Alert triggered for ${target.name}: ${finding.title}`);
   }
@@ -999,6 +1001,23 @@ export class RealTimeMonitor extends EventEmitter {
     for (const alert of alertsToProcess) {
       await this.sendAlert(alert);
     }
+  }
+
+  /**
+   * Enqueue an alert with queue capping (drop-oldest)
+   */
+  private enqueueAlert(ev: MonitoringEvent): void {
+    const cap = this.config.alerting.max_queue_size ?? 1000;
+    if (cap > 0 && this.alertQueue.length >= cap) {
+      this.alertQueue.shift();
+      this.alertQueueDropped += 1;
+      if (this.alertQueueDropped % 50 === 1) {
+        logger.warn(
+          `Alert queue full (cap=${cap}). Dropping oldest. dropped_total=${this.alertQueueDropped}`
+        );
+      }
+    }
+    this.alertQueue.push(ev);
   }
 
   /**
@@ -1232,6 +1251,7 @@ export class RealTimeMonitor extends EventEmitter {
     alerts_queued: number;
     behavioral_stats: any;
     ws_dropped_messages?: number;
+    alerts_dropped?: number;
   } {
     return {
       targets: this.config.targets.length,
@@ -1240,6 +1260,7 @@ export class RealTimeMonitor extends EventEmitter {
       alerts_queued: this.alertQueue.length,
       behavioral_stats: this.behavioralAnalysis.getBehavioralStats(),
       ws_dropped_messages: this.wsDroppedMessages,
+      alerts_dropped: this.alertQueueDropped,
     };
   }
 
