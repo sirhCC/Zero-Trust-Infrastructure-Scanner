@@ -1,7 +1,7 @@
 /**
  * Real-Time Monitoring Engine
  * Provides continuous security monitoring with WebSocket-based live updates
- * 
+ *
  * Features:
  * - Continuous scanning with configurable intervals
  * - Real-time threat detection and alerting
@@ -16,7 +16,9 @@ import { EventEmitter } from 'events';
 import { ZeroTrustScanner } from '../core/scanner';
 import { ScanTarget, SecurityFinding, ScanResult } from '../core/scanner';
 import { Logger } from '../utils/logger';
-import BehavioralMonitoringIntegration, { EnhancedSecurityEvent } from '../analytics/behavioral-integration';
+import BehavioralMonitoringIntegration, {
+  EnhancedSecurityEvent,
+} from '../analytics/behavioral-integration';
 
 // Create logger instance
 const logger = Logger.getInstance();
@@ -66,6 +68,13 @@ export interface WebSocketConfig {
   jwt_secret?: string; // optional shared secret for verifying JWTs
   jwt_issuer?: string; // optional expected JWT issuer
   jwt_audience?: string; // optional expected JWT audience
+  // Hardened settings
+  require_jwt?: boolean; // when true (default), JWT is required if authentication is enabled
+  allowed_origins?: string[]; // optional list of allowed Origin values
+  allowed_ips?: string[]; // optional list of allowed client IPs
+  max_token_length?: number; // default 4096
+  ping_interval_ms?: number; // default 30000
+  pong_timeout_ms?: number; // default 10000
 }
 
 export interface ChangeDetectionConfig {
@@ -78,7 +87,14 @@ export interface ChangeDetectionConfig {
 export interface MonitoringEvent {
   id: string;
   timestamp: Date;
-  type: 'scan_started' | 'scan_completed' | 'finding_detected' | 'finding_resolved' | 'target_changed' | 'alert_triggered' | 'behavioral_anomaly';
+  type:
+    | 'scan_started'
+    | 'scan_completed'
+    | 'finding_detected'
+    | 'finding_resolved'
+    | 'target_changed'
+    | 'alert_triggered'
+    | 'behavioral_anomaly';
   target_id: string;
   data: any;
   severity: 'critical' | 'high' | 'medium' | 'low' | 'info';
@@ -104,12 +120,16 @@ export class RealTimeMonitor extends EventEmitter {
   private isRunning: boolean = false;
   private targetBaselines: Map<string, SecurityFinding[]> = new Map();
   private behavioralAnalysis: BehavioralMonitoringIntegration;
+  private heartbeatMap: Map<
+    WebSocket,
+    { isAlive: boolean; interval: NodeJS.Timeout; lastPong: number }
+  > = new Map();
 
   constructor(config: MonitoringConfig) {
     super();
     this.config = config;
     this.scanner = new ZeroTrustScanner();
-    
+
     // Initialize behavioral analysis integration
     this.behavioralAnalysis = new BehavioralMonitoringIntegration({
       enabled: true,
@@ -117,16 +137,16 @@ export class RealTimeMonitor extends EventEmitter {
       anomaly_threshold: 0.6,
       real_time_updates: true,
       baseline_update_frequency: 24,
-      profile_retention_days: 90
+      profile_retention_days: 90,
     });
 
     this.setupBehavioralEventHandlers();
-    
+
     logger.info('🔴 Real-Time Monitor initialized with Behavioral Analysis', {
       targets: config.targets.length,
       scan_interval: config.scan_interval,
       websocket_port: config.websocket.port,
-      behavioral_analysis: true
+      behavioral_analysis: true,
     });
   }
 
@@ -143,11 +163,11 @@ export class RealTimeMonitor extends EventEmitter {
     this.behavioralAnalysis.on('high_severity_anomalies', (anomalies: any[]) => {
       logger.warn('High-severity behavioral anomalies detected', {
         count: anomalies.length,
-        critical_count: anomalies.filter(a => a.severity === 'critical').length
+        critical_count: anomalies.filter((a) => a.severity === 'critical').length,
       });
 
       // Send immediate alerts for critical anomalies
-      for (const anomaly of anomalies.filter(a => a.severity === 'critical')) {
+      for (const anomaly of anomalies.filter((a) => a.severity === 'critical')) {
         this.emitEvent({
           id: this.generateEventId(),
           timestamp: new Date(),
@@ -158,9 +178,9 @@ export class RealTimeMonitor extends EventEmitter {
             severity: anomaly.severity,
             score: anomaly.score,
             description: anomaly.description,
-            evidence: anomaly.evidence
+            evidence: anomaly.evidence,
           },
-          severity: 'critical'
+          severity: 'critical',
         });
       }
     });
@@ -168,7 +188,7 @@ export class RealTimeMonitor extends EventEmitter {
     // Listen for baseline updates
     this.behavioralAnalysis.on('baseline_update_completed', (data: any) => {
       logger.info('Behavioral baseline update completed', data);
-      
+
       this.broadcastLiveUpdate({
         event_id: this.generateEventId(),
         timestamp: new Date(),
@@ -176,8 +196,8 @@ export class RealTimeMonitor extends EventEmitter {
         target: 'behavioral_analysis',
         data: {
           profiles_count: data.profiles_count,
-          update_timestamp: data.timestamp
-        }
+          update_timestamp: data.timestamp,
+        },
       });
     });
   }
@@ -194,21 +214,21 @@ export class RealTimeMonitor extends EventEmitter {
     try {
       // Initialize scanner
       await this.scanner.initialize();
-      
+
       // Start WebSocket server
       await this.startWebSocketServer();
-      
+
       // Load target baselines
       await this.loadTargetBaselines();
-      
+
       // Start monitoring targets
       await this.startTargetMonitoring();
-      
+
       // Start alert processing
       this.startAlertProcessing();
-      
+
       this.isRunning = true;
-      
+
       logger.info('🚀 Real-time monitoring started successfully');
       this.emitEvent({
         id: this.generateEventId(),
@@ -216,9 +236,8 @@ export class RealTimeMonitor extends EventEmitter {
         type: 'scan_started',
         target_id: 'system',
         data: { message: 'Real-time monitoring started' },
-        severity: 'info'
+        severity: 'info',
       });
-      
     } catch (error) {
       logger.error('❌ Failed to start real-time monitoring:', error);
       throw error;
@@ -248,9 +267,8 @@ export class RealTimeMonitor extends EventEmitter {
       }
 
       this.isRunning = false;
-      
+
       logger.info('⏹️ Real-time monitoring stopped');
-      
     } catch (error) {
       logger.error('❌ Error stopping real-time monitoring:', error);
       throw error;
@@ -265,70 +283,233 @@ export class RealTimeMonitor extends EventEmitter {
       port: this.config.websocket.port,
       path: this.config.websocket.path,
       // Limit compression window to reduce risk of compression side-channel issues
-      perMessageDeflate: { threshold: 1024 }
+      perMessageDeflate: { threshold: 1024 },
     });
 
-  this.wsServer.on('connection', async (ws: WebSocket, request: any) => {
-      const clientIp = request.socket.remoteAddress;
+    // Helper closures for origin/IP checks
+    const isOriginAllowed = (req: any): boolean => {
+      const allowed = this.config.websocket.allowed_origins;
+      if (!allowed || allowed.length === 0) return true;
+      const origin = (
+        req.headers?.origin ||
+        req.headers?.['sec-websocket-origin'] ||
+        ''
+      ).toString();
+      if (!origin) return false; // if allowlist present, require origin
+      return allowed.includes('*') || allowed.some((o) => o === origin);
+    };
+    const normalizeIp = (ip: string | undefined): string => {
+      if (!ip) return '';
+      // Strip IPv6 mapped IPv4 prefix
+      if (ip.startsWith('::ffff:')) return ip.slice(7);
+      return ip;
+    };
+    const isIpAllowed = (req: any): boolean => {
+      const allowed = this.config.websocket.allowed_ips;
+      if (!allowed || allowed.length === 0) return true;
+      const ip = normalizeIp(req.socket?.remoteAddress);
+      return !!ip && (allowed.includes('*') || allowed.includes(ip));
+    };
+
+    this.wsServer.on('connection', async (ws: WebSocket, request: any) => {
+      const clientIp = normalizeIp(request.socket?.remoteAddress);
+
       // Enforce connection limits
       const max = this.config.websocket.max_connections || 100;
       if (this.connectedClients.size >= max) {
-        try { ws.close(1013, 'Server busy'); } catch {/* ignore */}
+        try {
+          ws.close(1013, 'Server busy');
+        } catch {
+          /* ignore */
+        }
         logger.warn(`WebSocket connection refused (limit ${max}) from ${clientIp}`);
         return;
       }
+
+      // Enforce origin/IP allowlists when configured
+      if (!isOriginAllowed(request)) {
+        try {
+          ws.close(1008, 'Origin not allowed');
+        } catch {
+          /* ignore */
+        }
+        logger.warn(
+          `❌ WebSocket origin not allowed: ${request.headers?.origin || request.headers?.['sec-websocket-origin']}`
+        );
+        return;
+      }
+      if (!isIpAllowed(request)) {
+        try {
+          ws.close(1008, 'IP not allowed');
+        } catch {
+          /* ignore */
+        }
+        logger.warn(`❌ WebSocket IP not allowed: ${clientIp}`);
+        return;
+      }
+
       // Simple token/JWT auth if enabled
       if (this.config.websocket.authentication) {
         try {
-          const headerName = (this.config.websocket.token_header || process.env.ZTIS_WS_TOKEN_HEADER || 'x-ztis-token').toLowerCase();
+          const headerName = (
+            this.config.websocket.token_header ||
+            process.env.ZTIS_WS_TOKEN_HEADER ||
+            'x-ztis-token'
+          ).toLowerCase();
           const headerToken = (request.headers && (request.headers[headerName] as string)) || '';
-          const authzHeader = (request.headers && (request.headers['authorization'] as string)) || '';
+          const authzHeader =
+            (request.headers && (request.headers['authorization'] as string)) || '';
           let urlToken = '';
           try {
             const fullUrl = new URL(request.url || '/', 'http://localhost');
             urlToken = fullUrl.searchParams.get('token') || '';
-          } catch { /* ignore URL parse errors */ }
+          } catch {
+            /* ignore URL parse errors */
+          }
 
           const staticExpected = this.config.websocket.token || process.env.ZTIS_WS_TOKEN || '';
-          const jwtSecret = this.config.websocket.jwt_secret || process.env.ZTIS_WS_JWT_SECRET || '';
-          const provided = (authzHeader && authzHeader.toLowerCase().startsWith('bearer ') ? authzHeader.slice(7).trim() : '') || headerToken || urlToken;
+          const jwtSecret =
+            this.config.websocket.jwt_secret || process.env.ZTIS_WS_JWT_SECRET || '';
+          const provided =
+            (authzHeader && authzHeader.toLowerCase().startsWith('bearer ')
+              ? authzHeader.slice(7).trim()
+              : '') ||
+            headerToken ||
+            urlToken;
+
+          // Enforce token length bounds
+          const maxLen = this.config.websocket.max_token_length ?? 4096;
+          if (provided && provided.length > maxLen) {
+            try {
+              ws.close(1008, 'Token too long');
+            } catch {
+              /* ignore */
+            }
+            logger.warn(
+              `❌ WebSocket auth token exceeded max length (${provided.length} > ${maxLen}) from ${clientIp}`
+            );
+            return;
+          }
+
+          // Determine requirement: default require JWT when auth enabled
+          const requireJwt = this.config.websocket.require_jwt !== false;
 
           let authorized = false;
-          // Prefer JWT if secret is configured and token looks like JWT
-          if (jwtSecret && provided && provided.split('.').length === 3) {
-            try {
-              // Lazy import to avoid cost if not used
-              const jwt = await import('jsonwebtoken');
-              const verifyOpts: any = {};
-              if (this.config.websocket.jwt_issuer || process.env.ZTIS_WS_JWT_ISSUER) verifyOpts.issuer = this.config.websocket.jwt_issuer || process.env.ZTIS_WS_JWT_ISSUER;
-              if (this.config.websocket.jwt_audience || process.env.ZTIS_WS_JWT_AUDIENCE) verifyOpts.audience = this.config.websocket.jwt_audience || process.env.ZTIS_WS_JWT_AUDIENCE;
-              (jwt as any).verify(provided, jwtSecret, verifyOpts);
+          if (requireJwt) {
+            if (!jwtSecret) {
+              logger.error('WebSocket auth requires JWT but no jwt_secret configured');
+              try {
+                ws.close(1008, 'Auth misconfiguration');
+              } catch {
+                /* ignore */
+              }
+              return;
+            }
+            if (provided && provided.split('.').length === 3) {
+              try {
+                // Lazy import to avoid cost if not used
+                const jwt = await import('jsonwebtoken');
+                const verifyOpts: any = {};
+                if (this.config.websocket.jwt_issuer || process.env.ZTIS_WS_JWT_ISSUER)
+                  verifyOpts.issuer =
+                    this.config.websocket.jwt_issuer || process.env.ZTIS_WS_JWT_ISSUER;
+                if (this.config.websocket.jwt_audience || process.env.ZTIS_WS_JWT_AUDIENCE)
+                  verifyOpts.audience =
+                    this.config.websocket.jwt_audience || process.env.ZTIS_WS_JWT_AUDIENCE;
+                (jwt as any).verify(provided, jwtSecret, verifyOpts);
+                authorized = true;
+              } catch (_e) {
+                authorized = false;
+              }
+            }
+          } else {
+            // Legacy static token path (discouraged)
+            if (staticExpected && provided && provided === staticExpected) {
               authorized = true;
-            } catch (e) {
-              authorized = false;
+              logger.warn(
+                'WebSocket using static token authentication; enable require_jwt for stronger security'
+              );
             }
           }
-          // Fallback to static token match
-          if (!authorized && staticExpected) {
-            if (provided && provided === staticExpected) authorized = true;
-          }
+
           if (!authorized) {
-            try { ws.close(1008, 'Invalid or missing auth token'); } catch { /* ignore close error */ }
+            try {
+              ws.close(1008, 'Invalid or missing auth token');
+            } catch {
+              /* ignore close error */
+            }
             logger.warn(`❌ WebSocket auth failed for ${clientIp}`);
             return;
           }
         } catch (e) {
-          try { ws.close(1008, 'Auth error'); } catch { /* ignore close error */ }
+          try {
+            ws.close(1008, 'Auth error');
+          } catch {
+            /* ignore close error */
+          }
           logger.error('WebSocket auth processing failed', e);
           return;
         }
       }
 
       logger.info(`🔌 WebSocket client connected from ${clientIp}`);
-      
+
+      // Heartbeat: ping/pong
+      const pingInterval = this.config.websocket.ping_interval_ms ?? 30000;
+      const pongTimeout = this.config.websocket.pong_timeout_ms ?? 10000;
+      const hb = {
+        isAlive: true,
+        interval: setInterval(() => {
+          const meta = this.heartbeatMap.get(ws);
+          if (!meta) return;
+          if (!meta.isAlive) {
+            try {
+              ws.terminate();
+            } catch {
+              /* ignore */
+            }
+            clearInterval(meta.interval);
+            this.heartbeatMap.delete(ws);
+            return;
+          }
+          meta.isAlive = false;
+          try {
+            ws.ping();
+          } catch {
+            /* ignore */
+          }
+          // Fallback termination if no pong within timeout
+          setTimeout(() => {
+            const m = this.heartbeatMap.get(ws);
+            if (m && !m.isAlive) {
+              try {
+                ws.terminate();
+              } catch {
+                /* ignore */
+              }
+              clearInterval(m.interval);
+              this.heartbeatMap.delete(ws);
+            }
+          }, pongTimeout);
+        }, pingInterval),
+        lastPong: Date.now(),
+      };
+      this.heartbeatMap.set(ws, hb);
+      try {
+        ws.on('pong', () => {
+          const m = this.heartbeatMap.get(ws);
+          if (m) {
+            m.isAlive = true;
+            m.lastPong = Date.now();
+          }
+        });
+      } catch {
+        /* noop */
+      }
+
       // Add to connected clients
       this.connectedClients.add(ws);
-      
+
       // Send initial status
       this.sendToClient(ws, {
         event_id: this.generateEventId(),
@@ -341,17 +522,19 @@ export class RealTimeMonitor extends EventEmitter {
           monitoring_active: this.isRunning,
           active_scans: this.monitoringIntervals.size,
           connected_clients: this.connectedClients.size,
-          alerts_queued: this.alertQueue.length
+          alerts_queued: this.alertQueue.length,
         },
-        severity: 'info'
+        severity: 'info',
       });
 
-  // Heartbeat/keepalive
-  try { ws.on('pong', () => { /* heartbeat ok */ }); } catch {/* noop */}
-
-  // Handle client disconnect
+      // Handle client disconnect
       ws.on('close', () => {
         this.connectedClients.delete(ws);
+        const meta = this.heartbeatMap.get(ws);
+        if (meta) {
+          clearInterval(meta.interval);
+          this.heartbeatMap.delete(ws);
+        }
         logger.info(`🔌 WebSocket client disconnected from ${clientIp}`);
       });
 
@@ -359,6 +542,11 @@ export class RealTimeMonitor extends EventEmitter {
       ws.on('error', (error: any) => {
         logger.error(`WebSocket error for client ${clientIp}:`, error);
         this.connectedClients.delete(ws);
+        const meta = this.heartbeatMap.get(ws);
+        if (meta) {
+          clearInterval(meta.interval);
+          this.heartbeatMap.delete(ws);
+        }
       });
     });
 
@@ -394,16 +582,16 @@ export class RealTimeMonitor extends EventEmitter {
   private async startMonitoringTarget(target: MonitoringTarget): Promise<void> {
     // Perform initial scan
     await this.scanTarget(target);
-    
+
     // Set up interval scanning
     const interval = setInterval(async () => {
       if (this.isRunning) {
         await this.scanTarget(target);
       }
     }, this.config.scan_interval);
-    
+
     this.monitoringIntervals.set(target.id, interval);
-    
+
     logger.info(`📡 Started monitoring target: ${target.name} (${target.id})`);
   }
 
@@ -413,7 +601,7 @@ export class RealTimeMonitor extends EventEmitter {
   private async scanTarget(target: MonitoringTarget): Promise<void> {
     try {
       logger.debug(`🔍 Scanning target: ${target.name}`);
-      
+
       // Emit scan started event
       this.emitEvent({
         id: this.generateEventId(),
@@ -421,18 +609,18 @@ export class RealTimeMonitor extends EventEmitter {
         type: 'scan_started',
         target_id: target.id,
         data: { target_name: target.name },
-        severity: 'info'
+        severity: 'info',
       });
 
       // Perform scan
       const result = await this.scanner.scan(target.scan_target);
-      
+
       // Update target last scan time
       target.last_scan = new Date();
-      
+
       // Process scan results
       await this.processScanResults(target, result);
-      
+
       // Emit scan completed event
       this.emitEvent({
         id: this.generateEventId(),
@@ -443,14 +631,13 @@ export class RealTimeMonitor extends EventEmitter {
           target_name: target.name,
           findings_count: result.findings.length,
           duration: result.duration,
-          status: result.status
+          status: result.status,
         },
-        severity: 'info'
+        severity: 'info',
       });
-      
     } catch (error) {
       logger.error(`❌ Error scanning target ${target.name}:`, error);
-      
+
       this.emitEvent({
         id: this.generateEventId(),
         timestamp: new Date(),
@@ -459,9 +646,9 @@ export class RealTimeMonitor extends EventEmitter {
         data: {
           target_name: target.name,
           error: error instanceof Error ? error.message : 'Unknown error',
-          status: 'failed'
+          status: 'failed',
         },
-        severity: 'high'
+        severity: 'high',
       });
     }
   }
@@ -472,7 +659,7 @@ export class RealTimeMonitor extends EventEmitter {
   private async processScanResults(target: MonitoringTarget, result: ScanResult): Promise<void> {
     const currentFindings = result.findings;
     const baseline = this.targetBaselines.get(target.id) || [];
-    
+
     // Run behavioral analysis on scan results
     try {
       const behavioralEvents = await this.behavioralAnalysis.processScanResults([result]);
@@ -482,30 +669,30 @@ export class RealTimeMonitor extends EventEmitter {
     } catch (error) {
       logger.error('Error in behavioral analysis processing', error);
     }
-    
+
     if (this.config.change_detection.enabled) {
       // Detect new findings
       const newFindings = this.detectNewFindings(currentFindings, baseline);
-      
+
       // Detect resolved findings
       const resolvedFindings = this.detectResolvedFindings(currentFindings, baseline);
-      
+
       // Process new findings
       for (const finding of newFindings) {
         await this.processNewFinding(target, finding);
       }
-      
+
       // Process resolved findings
       for (const finding of resolvedFindings) {
         await this.processResolvedFinding(target, finding);
       }
-      
+
       // Update baseline if needed
       if (this.shouldUpdateBaseline(target)) {
         this.updateTargetBaseline(target.id, currentFindings);
       }
     }
-    
+
     // Send live update to connected clients
     this.broadcastLiveUpdate({
       event_id: this.generateEventId(),
@@ -514,42 +701,47 @@ export class RealTimeMonitor extends EventEmitter {
       target: target.name,
       data: {
         findings_count: currentFindings.length,
-        critical_count: currentFindings.filter(f => f.severity === 'critical').length,
-        high_count: currentFindings.filter(f => f.severity === 'high').length,
+        critical_count: currentFindings.filter((f) => f.severity === 'critical').length,
+        high_count: currentFindings.filter((f) => f.severity === 'high').length,
         scan_duration: result.duration,
-        status: result.status
-      }
+        status: result.status,
+      },
     });
   }
 
   /**
    * Detect new findings compared to baseline
    */
-  private detectNewFindings(current: SecurityFinding[], baseline: SecurityFinding[]): SecurityFinding[] {
-    return current.filter(finding => 
-      !baseline.some(baselineFinding => 
-        baselineFinding.id === finding.id
-      )
+  private detectNewFindings(
+    current: SecurityFinding[],
+    baseline: SecurityFinding[]
+  ): SecurityFinding[] {
+    return current.filter(
+      (finding) => !baseline.some((baselineFinding) => baselineFinding.id === finding.id)
     );
   }
 
   /**
    * Detect resolved findings compared to baseline
    */
-  private detectResolvedFindings(current: SecurityFinding[], baseline: SecurityFinding[]): SecurityFinding[] {
-    return baseline.filter(baselineFinding => 
-      !current.some(finding => 
-        finding.id === baselineFinding.id
-      )
+  private detectResolvedFindings(
+    current: SecurityFinding[],
+    baseline: SecurityFinding[]
+  ): SecurityFinding[] {
+    return baseline.filter(
+      (baselineFinding) => !current.some((finding) => finding.id === baselineFinding.id)
     );
   }
 
   /**
    * Process a new finding
    */
-  private async processNewFinding(target: MonitoringTarget, finding: SecurityFinding): Promise<void> {
+  private async processNewFinding(
+    target: MonitoringTarget,
+    finding: SecurityFinding
+  ): Promise<void> {
     logger.info(`🚨 New ${finding.severity} finding detected in ${target.name}: ${finding.title}`);
-    
+
     // Emit finding detected event
     this.emitEvent({
       id: this.generateEventId(),
@@ -558,24 +750,24 @@ export class RealTimeMonitor extends EventEmitter {
       target_id: target.id,
       data: {
         target_name: target.name,
-        finding: finding
+        finding: finding,
       },
-      severity: finding.severity
+      severity: finding.severity,
     });
-    
+
     // Send live update
     this.broadcastLiveUpdate({
       event_id: this.generateEventId(),
       timestamp: new Date(),
       type: 'finding',
       target: target.name,
-  data: {
+      data: {
         action: 'new',
-        finding: finding
-  },
-  severity: finding.severity
+        finding: finding,
+      },
+      severity: finding.severity,
     });
-    
+
     // Trigger alert if severity meets threshold
     if (this.shouldTriggerAlert(finding.severity)) {
       await this.triggerAlert(target, finding, 'new');
@@ -585,9 +777,12 @@ export class RealTimeMonitor extends EventEmitter {
   /**
    * Process a resolved finding
    */
-  private async processResolvedFinding(target: MonitoringTarget, finding: SecurityFinding): Promise<void> {
+  private async processResolvedFinding(
+    target: MonitoringTarget,
+    finding: SecurityFinding
+  ): Promise<void> {
     logger.info(`✅ ${finding.severity} finding resolved in ${target.name}: ${finding.title}`);
-    
+
     // Emit finding resolved event
     this.emitEvent({
       id: this.generateEventId(),
@@ -596,11 +791,11 @@ export class RealTimeMonitor extends EventEmitter {
       target_id: target.id,
       data: {
         target_name: target.name,
-        finding: finding
+        finding: finding,
       },
-      severity: 'info'
+      severity: 'info',
     });
-    
+
     // Send live update
     this.broadcastLiveUpdate({
       event_id: this.generateEventId(),
@@ -609,9 +804,9 @@ export class RealTimeMonitor extends EventEmitter {
       target: target.name,
       data: {
         action: 'resolved',
-        finding: finding
-  },
-  severity: 'info'
+        finding: finding,
+      },
+      severity: 'info',
     });
   }
 
@@ -624,7 +819,7 @@ export class RealTimeMonitor extends EventEmitter {
         severity: event.severity,
         entity_type: event.entity_type,
         anomaly_score: event.behavioral_context.anomaly_score,
-        confidence: event.behavioral_context.confidence_level
+        confidence: event.behavioral_context.confidence_level,
       });
 
       // Emit behavioral event
@@ -638,9 +833,9 @@ export class RealTimeMonitor extends EventEmitter {
           behavioral_context: event.behavioral_context,
           anomaly_indicators: event.anomaly_indicators,
           recommended_actions: event.recommended_actions,
-          scan_result: event.scan_result
+          scan_result: event.scan_result,
         },
-        severity: event.severity
+        severity: event.severity,
       });
 
       // Send live update for behavioral events
@@ -655,15 +850,16 @@ export class RealTimeMonitor extends EventEmitter {
           confidence_level: event.behavioral_context.confidence_level,
           patterns: event.behavioral_context.behavioral_patterns,
           recommended_actions: event.recommended_actions.slice(0, 3), // First 3 actions
-          severity: event.severity
-  },
-  severity: event.severity
+          severity: event.severity,
+        },
+        severity: event.severity,
       });
 
       // Process high-severity behavioral events for alerting
-      if ((event.severity === 'high' || event.severity === 'critical') && 
-          this.shouldTriggerAlert(event.severity)) {
-        
+      if (
+        (event.severity === 'high' || event.severity === 'critical') &&
+        this.shouldTriggerAlert(event.severity)
+      ) {
         this.alertQueue.push({
           id: this.generateEventId(),
           timestamp: new Date(),
@@ -675,9 +871,9 @@ export class RealTimeMonitor extends EventEmitter {
             anomaly_score: event.behavioral_context.anomaly_score,
             confidence: event.behavioral_context.confidence_level,
             description: `Behavioral anomaly detected for ${event.entity_type}: ${event.entity_id}`,
-            recommended_actions: event.recommended_actions
+            recommended_actions: event.recommended_actions,
           },
-          severity: event.severity
+          severity: event.severity,
         });
       }
     }
@@ -688,18 +884,22 @@ export class RealTimeMonitor extends EventEmitter {
    */
   private shouldTriggerAlert(severity: string): boolean {
     if (!this.config.alerting.enabled) return false;
-    
+
     const severityLevels = ['critical', 'high', 'medium', 'low'];
     const thresholdIndex = severityLevels.indexOf(this.config.alerting.severity_threshold);
     const findingSeverityIndex = severityLevels.indexOf(severity);
-    
+
     return findingSeverityIndex <= thresholdIndex;
   }
 
   /**
    * Trigger an alert
    */
-  private async triggerAlert(target: MonitoringTarget, finding: SecurityFinding, action: 'new' | 'resolved'): Promise<void> {
+  private async triggerAlert(
+    target: MonitoringTarget,
+    finding: SecurityFinding,
+    action: 'new' | 'resolved'
+  ): Promise<void> {
     const event: MonitoringEvent = {
       id: this.generateEventId(),
       timestamp: new Date(),
@@ -709,14 +909,14 @@ export class RealTimeMonitor extends EventEmitter {
         target_name: target.name,
         finding: finding,
         action: action,
-        priority: target.priority
+        priority: target.priority,
       },
-      severity: finding.severity
+      severity: finding.severity,
     };
-    
+
     // Add to alert queue for processing
     this.alertQueue.push(event);
-    
+
     logger.warn(`🚨 Alert triggered for ${target.name}: ${finding.title}`);
   }
 
@@ -735,9 +935,12 @@ export class RealTimeMonitor extends EventEmitter {
    */
   private async processAlertQueue(): Promise<void> {
     if (this.alertQueue.length === 0) return;
-    
-    const alertsToProcess = this.alertQueue.splice(0, this.config.alerting.rate_limiting.max_alerts_per_minute);
-    
+
+    const alertsToProcess = this.alertQueue.splice(
+      0,
+      this.config.alerting.rate_limiting.max_alerts_per_minute
+    );
+
     for (const alert of alertsToProcess) {
       await this.sendAlert(alert);
     }
@@ -763,10 +966,12 @@ export class RealTimeMonitor extends EventEmitter {
    */
   private async sendAlertToChannel(channel: AlertChannel, event: MonitoringEvent): Promise<void> {
     // This would integrate with actual services
-    logger.info(`📢 Sending ${event.severity} alert to ${channel.type}: ${event.data.finding.title}`);
-    
+    logger.info(
+      `📢 Sending ${event.severity} alert to ${channel.type}: ${event.data.finding.title}`
+    );
+
     // Simulate alert sending
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
   }
 
   /**
@@ -784,7 +989,7 @@ export class RealTimeMonitor extends EventEmitter {
     // Update baseline every configured hours
     const updateFrequency = this.config.change_detection.baseline_update_frequency * 60 * 60 * 1000;
     const lastUpdate = target.last_scan || new Date(0);
-    return (Date.now() - lastUpdate.getTime()) > updateFrequency;
+    return Date.now() - lastUpdate.getTime() > updateFrequency;
   }
 
   /**
@@ -792,16 +997,16 @@ export class RealTimeMonitor extends EventEmitter {
    */
   private emitEvent(event: MonitoringEvent): void {
     this.emit('monitoring_event', event);
-    
+
     // Send to connected WebSocket clients
     this.broadcastLiveUpdate({
       event_id: event.id,
       timestamp: event.timestamp,
       type: 'status',
       target: event.target_id,
-  // Include event_type and preserve original event data for richer clients
-  data: { ...event.data, event_type: event.type },
-  severity: event.severity
+      // Include event_type and preserve original event data for richer clients
+      data: { ...event.data, event_type: event.type },
+      severity: event.severity,
     });
   }
 
@@ -810,7 +1015,7 @@ export class RealTimeMonitor extends EventEmitter {
    */
   private broadcastLiveUpdate(update: LiveUpdate): void {
     const message = JSON.stringify(update);
-    
+
     for (const client of this.connectedClients) {
       if (client.readyState === WebSocket.OPEN) {
         try {
@@ -854,10 +1059,10 @@ export class RealTimeMonitor extends EventEmitter {
     return {
       running: this.isRunning,
       targets: this.config.targets.length,
-      active_targets: this.config.targets.filter(t => t.enabled).length,
+      active_targets: this.config.targets.filter((t) => t.enabled).length,
       connected_clients: this.connectedClients.size,
       scan_interval: this.config.scan_interval,
-      last_activity: new Date()
+      last_activity: new Date(),
     };
   }
 
@@ -866,11 +1071,11 @@ export class RealTimeMonitor extends EventEmitter {
    */
   async addTarget(target: MonitoringTarget): Promise<void> {
     this.config.targets.push(target);
-    
+
     if (target.enabled && this.isRunning) {
       await this.startMonitoringTarget(target);
     }
-    
+
     logger.info(`➕ Added monitoring target: ${target.name}`);
   }
 
@@ -884,13 +1089,13 @@ export class RealTimeMonitor extends EventEmitter {
       clearInterval(interval);
       this.monitoringIntervals.delete(targetId);
     }
-    
+
     // Remove from config
-    this.config.targets = this.config.targets.filter(t => t.id !== targetId);
-    
+    this.config.targets = this.config.targets.filter((t) => t.id !== targetId);
+
     // Remove baseline
     this.targetBaselines.delete(targetId);
-    
+
     logger.info(`➖ Removed monitoring target: ${targetId}`);
   }
 
@@ -909,7 +1114,7 @@ export class RealTimeMonitor extends EventEmitter {
       active_scans: this.monitoringIntervals.size,
       connected_clients: this.connectedClients.size,
       alerts_queued: this.alertQueue.length,
-      behavioral_stats: this.behavioralAnalysis.getBehavioralStats()
+      behavioral_stats: this.behavioralAnalysis.getBehavioralStats(),
     };
   }
 
@@ -953,12 +1158,12 @@ export class RealTimeMonitor extends EventEmitter {
     // Close WebSocket server
     if (this.wsServer) {
       // Close all client connections
-      this.connectedClients.forEach(client => {
+      this.connectedClients.forEach((client) => {
         if (client.readyState === WebSocket.OPEN) {
           client.close(1000, 'Server shutting down');
         }
       });
-      
+
       // Close server
       this.wsServer.close();
       this.wsServer = null;
