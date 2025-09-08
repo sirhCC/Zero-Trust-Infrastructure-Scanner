@@ -243,6 +243,7 @@ PRs welcome. Suggested flow:
 ## � Resources
 
 - Advanced docs: `docs/` (see also Wiki)
+- Secure deployment: `docs/SECURE_DEPLOYMENT.md`
 - Roadmap: `docs/ENHANCEMENT_ROADMAP.md`
 - Examples: `examples/`
 - Issues: <https://github.com/sirhCC/Zero-Trust-Infrastructure-Scanner/issues>
