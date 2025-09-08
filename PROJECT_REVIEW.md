@@ -26,7 +26,7 @@ This is a well-structured TypeScript mono-service with a clean CLI, modular scan
 
 - Operational robustness in monitor
   - Implement heartbeat ping with disconnect on missed pongs; expose configurable timeouts. ✅ Added `ping_interval_ms` and `pong_timeout_ms`
-  - Guard against unbounded `alertQueue` growth; cap and drop oldest with metrics. ⏳ Pending
+  - Guard against unbounded `alertQueue` growth; cap and drop oldest with metrics. ✅ Implemented (`alerting.max_queue_size` + dropped counter)
   - Add origin/IP allowlist (configurable) for admin/operator UIs. ✅ `allowed_ips` added (enforced)
 
 - Security posture docs
