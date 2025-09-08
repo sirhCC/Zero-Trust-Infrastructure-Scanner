@@ -4,6 +4,7 @@ import * as YAML from 'yaml';
 import * as fs from 'fs';
 import * as path from 'path';
 import { shouldFailBySeverity, RegisterCommands } from './shared';
+import { sanitizeOutputPath } from '../utils/path-safe';
 
 export const registerSupplyChainCommands: RegisterCommands = (program: Command) => {
   program
@@ -13,10 +14,17 @@ export const registerSupplyChainCommands: RegisterCommands = (program: Command) 
     .option('-i, --image <image>', 'Container image to scan')
     .option('-f, --file <file>', 'Dockerfile or package file to analyze')
     .option('-r, --registry <registry>', 'Container registry to scan')
-    .option('--severity <level>', 'Minimum vulnerability severity (low|medium|high|critical)', 'medium')
+    .option(
+      '--severity <level>',
+      'Minimum vulnerability severity (low|medium|high|critical)',
+      'medium'
+    )
     .option('--include-dev-deps', 'Include development dependencies')
     .option('--out-file <file>', 'Write command output to file (respects --output)')
-    .option('--fail-on <severity>', 'Exit non-zero if findings at/above severity exist (low|medium|high|critical)')
+    .option(
+      '--fail-on <severity>',
+      'Exit non-zero if findings at/above severity exist (low|medium|high|critical)'
+    )
     .action(async (options, cmd) => {
       try {
         const { ConfigManager } = await import('../config/config-manager');
@@ -46,8 +54,8 @@ export const registerSupplyChainCommands: RegisterCommands = (program: Command) 
             check_licenses: true,
             generate_sbom: false,
             ignore_unfixed: false,
-            scan_depth: 3
-          }
+            scan_depth: 3,
+          },
         };
 
         const timeoutMsArg = rootOpts.timeout ? parseInt(rootOpts.timeout) : undefined;
@@ -60,12 +68,14 @@ export const registerSupplyChainCommands: RegisterCommands = (program: Command) 
         const result = await scanner.scan(target, scanOpts);
 
         if (rootOpts.output && rootOpts.output !== 'table') {
-          const payload = rootOpts.output === 'yaml' ? YAML.stringify(result) : JSON.stringify(result, null, 2);
+          const payload =
+            rootOpts.output === 'yaml' ? YAML.stringify(result) : JSON.stringify(result, null, 2);
           if (options.outFile) {
-            const dir = path.dirname(options.outFile);
+            const outPath = sanitizeOutputPath(options.outFile);
+            const dir = path.dirname(outPath);
             if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-            fs.writeFileSync(options.outFile, payload, 'utf8');
-            console.error(chalk.gray(`Output written to ${options.outFile}`));
+            fs.writeFileSync(outPath, payload, 'utf8');
+            console.error(chalk.gray(`Output written to ${outPath}`));
           } else {
             console.log(payload);
           }
@@ -78,11 +88,11 @@ export const registerSupplyChainCommands: RegisterCommands = (program: Command) 
         if (rootOpts.output === 'table' && result.findings.length > 0) {
           console.log('\n' + chalk.bold('Supply Chain Security Findings:'));
           const findingsBySeverity = {
-            critical: result.findings.filter(f => f.severity === 'critical'),
-            high: result.findings.filter(f => f.severity === 'high'),
-            medium: result.findings.filter(f => f.severity === 'medium'),
-            low: result.findings.filter(f => f.severity === 'low'),
-            info: result.findings.filter(f => f.severity === 'info')
+            critical: result.findings.filter((f) => f.severity === 'critical'),
+            high: result.findings.filter((f) => f.severity === 'high'),
+            medium: result.findings.filter((f) => f.severity === 'medium'),
+            low: result.findings.filter((f) => f.severity === 'low'),
+            info: result.findings.filter((f) => f.severity === 'info'),
           };
           Object.entries(findingsBySeverity).forEach(([severity, findings]) => {
             if (findings.length > 0) {
@@ -91,7 +101,7 @@ export const registerSupplyChainCommands: RegisterCommands = (program: Command) 
                 high: chalk.redBright,
                 medium: chalk.yellow,
                 low: chalk.blue,
-                info: chalk.gray
+                info: chalk.gray,
               }[severity as keyof typeof findingsBySeverity];
               console.log(`\n${severityColor(`${severity.toUpperCase()} (${findings.length})`)}`);
               findings.forEach((finding, index) => {
@@ -101,7 +111,9 @@ export const registerSupplyChainCommands: RegisterCommands = (program: Command) 
                   console.log(`   💡 ${chalk.cyan('Recommendation:')} ${finding.recommendation}`);
                 }
                 if (finding.category.includes('cve') || finding.description.includes('CVE-')) {
-                  console.log(`   🔗 ${chalk.magenta('Security Advisory')} - Check CVE database for details`);
+                  console.log(
+                    `   🔗 ${chalk.magenta('Security Advisory')} - Check CVE database for details`
+                  );
                 }
                 console.log('');
               });
@@ -117,7 +129,9 @@ export const registerSupplyChainCommands: RegisterCommands = (program: Command) 
             console.log(`   ${chalk.yellow('Medium:')} ${findingsBySeverity.medium.length}`);
             console.log(`   ${chalk.blue('Low:')} ${findingsBySeverity.low.length}`);
             if (criticalCount > 0) {
-              console.log(chalk.red('\n⚠️  CRITICAL vulnerabilities found - immediate action required!'));
+              console.log(
+                chalk.red('\n⚠️  CRITICAL vulnerabilities found - immediate action required!')
+              );
             }
           }
         } else if (rootOpts.output === 'table') {
@@ -128,9 +142,11 @@ export const registerSupplyChainCommands: RegisterCommands = (program: Command) 
           console.error(chalk.red('Failing due to severity threshold.'));
           process.exit(1);
         }
-
       } catch (error) {
-        console.error(chalk.red('❌ Supply chain scan failed:'), error instanceof Error ? error.message : error);
+        console.error(
+          chalk.red('❌ Supply chain scan failed:'),
+          error instanceof Error ? error.message : error
+        );
         process.exit(1);
       }
     });
