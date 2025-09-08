@@ -13,6 +13,7 @@ import type { NetworkScanOptions } from '../scanners/network-scanner';
 import type { IdentityScanOptions } from '../scanners/identity-scanner';
 import type { SupplyChainScanOptions } from '../scanners/supply-chain-scanner';
 import type { ComplianceScanOptions } from '../scanners/compliance-scanner';
+import { sanitizeOutputPath } from '../utils/path-safe';
 
 export type ScanTarget =
   | { type: 'network'; target: string; options: NetworkScanOptions }
@@ -76,7 +77,7 @@ export class ZeroTrustScanner {
    */
   private initializeScanners(): void {
     // Initialize scanner registry from configuration
-    Object.keys(SCANNER_CONFIGS).forEach(scannerType => {
+    Object.keys(SCANNER_CONFIGS).forEach((scannerType) => {
       const config = SCANNER_CONFIGS[scannerType];
       this.scanners.set(scannerType, config.className);
     });
@@ -86,12 +87,12 @@ export class ZeroTrustScanner {
    * Initialize the scanner with all modules
    */
   async initialize(): Promise<void> {
-  if (!this.quiet) console.log('🔧 Initializing Zero-Trust Scanner...');
-    
+    if (!this.quiet) console.log('🔧 Initializing Zero-Trust Scanner...');
+
     // Scanner modules are loaded dynamically as needed
-  if (!this.quiet) console.log(`📊 Registered ${this.scanners.size} scanner types`);
-    
-  if (!this.quiet) console.log('✅ Scanner initialization complete');
+    if (!this.quiet) console.log(`📊 Registered ${this.scanners.size} scanner types`);
+
+    if (!this.quiet) console.log('✅ Scanner initialization complete');
   }
 
   /**
@@ -99,7 +100,7 @@ export class ZeroTrustScanner {
    */
   async start(): Promise<void> {
     console.log('🚀 Zero-Trust Scanner service started');
-    
+
     // Keep the process alive
     process.stdin.resume();
   }
@@ -107,20 +108,27 @@ export class ZeroTrustScanner {
   /**
    * Execute a security scan
    */
-  async scan(target: ScanTarget, opts?: { signal?: AbortSignal; timeoutMs?: number }): Promise<ScanResult> {
+  async scan(
+    target: ScanTarget,
+    opts?: { signal?: AbortSignal; timeoutMs?: number }
+  ): Promise<ScanResult> {
     const scanId = this.generateScanId();
     const startTime = Date.now();
     let aborted = false;
     let timeoutHandle: NodeJS.Timeout | null = null;
-    const onAbort = () => { aborted = true; };
-  if (opts?.signal) {
+    const onAbort = () => {
+      aborted = true;
+    };
+    if (opts?.signal) {
       if (opts.signal.aborted) aborted = true;
       else opts.signal.addEventListener('abort', onAbort, { once: true });
     }
     if (opts?.timeoutMs && opts.timeoutMs > 0) {
-      timeoutHandle = setTimeout(() => { aborted = true; }, opts.timeoutMs);
+      timeoutHandle = setTimeout(() => {
+        aborted = true;
+      }, opts.timeoutMs);
     }
-    
+
     const scanResult: ScanResult = {
       id: scanId,
       timestamp: new Date(),
@@ -133,18 +141,18 @@ export class ZeroTrustScanner {
         failed_checks: 0,
         warnings: 0,
         resources_scanned: 0,
-        scan_coverage: 0
+        scan_coverage: 0,
       },
-      duration: 0
+      duration: 0,
     };
 
     this.activeScans.set(scanId, scanResult);
 
     try {
-  if (!this.isTestMode && !this.quiet) {
+      if (!this.isTestMode && !this.quiet) {
         console.log(`🔍 Starting ${target.type} scan for: ${target.target}`);
       }
-      
+
       // Route to appropriate scanner using configuration
       const config = SCANNER_CONFIGS[target.type];
       if (!config) {
@@ -159,37 +167,38 @@ export class ZeroTrustScanner {
         // Load scanner and execute scan
         const scanner = await ScannerResultProcessor.loadScanner(config);
         const findings = await scanner.scan(target);
-        
-  // Process findings and metrics using unified approach
-  scanResult.findings = applyComplianceMapping(ScannerResultProcessor.processFindings(findings));
+
+        // Process findings and metrics using unified approach
+        scanResult.findings = applyComplianceMapping(
+          ScannerResultProcessor.processFindings(findings)
+        );
         scanResult.metrics = ScannerResultProcessor.calculateMetrics(scanResult.findings, config);
-        
+
         // Additional processing time
-  await this.simulateScan(config.processingTime, scanId, isAborted);
+        await this.simulateScan(config.processingTime, scanId, isAborted);
       }
 
       scanResult.status = 'completed';
       scanResult.duration = Date.now() - startTime;
-      
+
       if (!this.isTestMode && !this.quiet) {
         console.log(`✅ Scan ${scanId} completed in ${scanResult.duration}ms`);
       }
-      
     } catch (error) {
       // Check if this was a cancellation
       if (error instanceof Error && error.message === 'Scan cancelled') {
         scanResult.status = 'cancelled';
         // Only log cancellation messages in non-test mode to avoid confusing test output
-  if (!this.isTestMode && !this.quiet) {
+        if (!this.isTestMode && !this.quiet) {
           console.log(`🚫 Scan ${scanId} was cancelled`);
         }
       } else {
-  if (!this.isTestMode && !this.quiet) {
+        if (!this.isTestMode && !this.quiet) {
           console.error(`❌ Scan ${scanId} failed:`, error);
         }
         scanResult.status = 'failed';
       }
-      
+
       scanResult.duration = Date.now() - startTime;
     } finally {
       this.activeScans.delete(scanId);
@@ -205,16 +214,15 @@ export class ZeroTrustScanner {
    * Export a compliance report (json|csv)
    */
   exportReport(result: ScanResult, outPath: string, format: 'json' | 'csv' = 'json'): void {
-    const dir = path.dirname(outPath);
+    const safePath = sanitizeOutputPath(outPath);
+    const dir = path.dirname(safePath);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     if (format === 'json') {
-      fs.writeFileSync(outPath, JSON.stringify(result, null, 2), 'utf8');
+      fs.writeFileSync(safePath, JSON.stringify(result, null, 2), 'utf8');
       return;
     }
     // CSV: minimal shape
-    const lines: string[] = [
-      'id,severity,category,title,standard,control,impact'
-    ];
+    const lines: string[] = ['id,severity,category,title,standard,control,impact'];
     const sanitizeForCSV = (value: string) => {
       // Prevent CSV formula injection in spreadsheet tools
       // If cell starts with =, +, -, or @, prefix with a single quote
@@ -222,7 +230,10 @@ export class ZeroTrustScanner {
       return value;
     };
     for (const f of result.findings) {
-      const impacts = f.compliance_impact && f.compliance_impact.length > 0 ? f.compliance_impact : [{ standard: '' as any, control: '', impact: '' as any }];
+      const impacts =
+        f.compliance_impact && f.compliance_impact.length > 0
+          ? f.compliance_impact
+          : [{ standard: '' as any, control: '', impact: '' as any }];
       for (const c of impacts) {
         const row = [
           JSON.stringify(sanitizeForCSV(String(f.id))),
@@ -231,21 +242,22 @@ export class ZeroTrustScanner {
           JSON.stringify(sanitizeForCSV(String(f.title))),
           c.standard || '',
           JSON.stringify(sanitizeForCSV(String(c.control || ''))),
-          c.impact || ''
+          c.impact || '',
         ].join(',');
         lines.push(row);
       }
     }
-    fs.writeFileSync(outPath, lines.join('\n'), 'utf8');
+    fs.writeFileSync(safePath, lines.join('\n'), 'utf8');
   }
 
   /**
    * Baseline save/load and drift calculations
    */
   saveBaseline(filePath: string, result: ScanResult): void {
-    const dir = path.dirname(filePath);
+    const safePath = sanitizeOutputPath(filePath);
+    const dir = path.dirname(safePath);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(filePath, JSON.stringify(result, null, 2), 'utf8');
+    fs.writeFileSync(safePath, JSON.stringify(result, null, 2), 'utf8');
   }
 
   loadBaseline(filePath: string): ScanResult | null {
@@ -258,10 +270,11 @@ export class ZeroTrustScanner {
    * Compute drift between two scan results; returns positive counts if current > baseline
    */
   computeDrift(current: ScanResult, baseline: ScanResult) {
-    const countBySeverity = (findings: typeof current.findings) => findings.reduce<Record<string, number>>((acc, f) => {
-      acc[f.severity] = (acc[f.severity] || 0) + 1;
-      return acc;
-    }, {});
+    const countBySeverity = (findings: typeof current.findings) =>
+      findings.reduce<Record<string, number>>((acc, f) => {
+        acc[f.severity] = (acc[f.severity] || 0) + 1;
+        return acc;
+      }, {});
     const c = countBySeverity(current.findings);
     const b = countBySeverity(baseline.findings);
     return {
@@ -269,7 +282,7 @@ export class ZeroTrustScanner {
       high: (c.high || 0) - (b.high || 0),
       medium: (c.medium || 0) - (b.medium || 0),
       low: (c.low || 0) - (b.low || 0),
-      total: current.findings.length - baseline.findings.length
+      total: current.findings.length - baseline.findings.length,
     };
   }
 
@@ -291,17 +304,20 @@ export class ZeroTrustScanner {
    * Get scan by ID
    */
   getScan(scanId: string): ScanResult | undefined {
-    return this.activeScans.get(scanId) || 
-           this.scanHistory.find(scan => scan.id === scanId);
+    return this.activeScans.get(scanId) || this.scanHistory.find((scan) => scan.id === scanId);
   }
 
   /**
    * Simulate scan work with delay (for testing and demo purposes)
    */
-  private async simulateScan(duration: number, scanId?: string, isAborted?: () => boolean): Promise<void> {
+  private async simulateScan(
+    duration: number,
+    scanId?: string,
+    isAborted?: () => boolean
+  ): Promise<void> {
     const startTime = Date.now();
     const endTime = startTime + duration;
-    
+
     while (Date.now() < endTime) {
       // Check if scan was cancelled
       if (scanId) {
@@ -314,52 +330,59 @@ export class ZeroTrustScanner {
       if (isAborted && isAborted()) {
         throw new Error('Scan cancelled');
       }
-      
+
       // Wait 100ms before checking again
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
   }
 
   /**
    * Run comprehensive scan across all scanner types
    */
-  private async runComprehensiveScan(target: ScanTarget, scanResult: ScanResult, scanId: string, isAborted?: () => boolean): Promise<void> {
+  private async runComprehensiveScan(
+    target: ScanTarget,
+    scanResult: ScanResult,
+    scanId: string,
+    isAborted?: () => boolean
+  ): Promise<void> {
     const allFindings: SecurityFinding[] = [];
     let totalChecks = 0;
-  let _totalProcessingTime = 0;
+    let _totalProcessingTime = 0;
 
     // Run all scanner types except comprehensive
-    const scannerTypes = Object.keys(SCANNER_CONFIGS).filter(type => type !== 'comprehensive');
-    
+    const scannerTypes = Object.keys(SCANNER_CONFIGS).filter((type) => type !== 'comprehensive');
+
     if (!this.isTestMode) {
       console.log(`🔍 Running comprehensive scan across ${scannerTypes.length} scanner types...`);
     }
-    
+
     for (const scannerType of scannerTypes) {
       const config = SCANNER_CONFIGS[scannerType];
-      
+
       try {
         if (!this.isTestMode) {
           console.log(`  📊 Running ${scannerType} scan...`);
         }
-        
+
         // Create sub-target for this scanner type
-  const subTarget = { ...target, type: scannerType as unknown as ScanTarget['type'] } as ScanTarget;
-        
+        const subTarget = {
+          ...target,
+          type: scannerType as unknown as ScanTarget['type'],
+        } as ScanTarget;
+
         // Load and run scanner
         const scanner = await ScannerResultProcessor.loadScanner(config);
         const findings = await scanner.scan(subTarget);
-        
+
         // Process findings
         const processedFindings = ScannerResultProcessor.processFindings(findings);
         allFindings.push(...processedFindings);
-        
+
         totalChecks += config.totalChecks;
-  _totalProcessingTime += config.processingTime;
-        
+        _totalProcessingTime += config.processingTime;
+
         // Simulate processing time for this scanner
-  await this.simulateScan(Math.floor(config.processingTime * 0.3), scanId, isAborted);
-        
+        await this.simulateScan(Math.floor(config.processingTime * 0.3), scanId, isAborted);
       } catch (error) {
         if (!this.isTestMode) {
           console.warn(`  ⚠️ Warning: ${scannerType} scan failed:`, error);
@@ -370,27 +393,29 @@ export class ZeroTrustScanner {
 
     // Aggregate results
     scanResult.findings = allFindings;
-    
+
     // Calculate comprehensive metrics
-    const failedChecks = allFindings.filter(f => 
-      f.severity === 'critical' || f.severity === 'high'
+    const failedChecks = allFindings.filter(
+      (f) => f.severity === 'critical' || f.severity === 'high'
     ).length;
-    
-    const warnings = allFindings.filter(f => 
-      f.severity === 'medium' || f.severity === 'low'
+
+    const warnings = allFindings.filter(
+      (f) => f.severity === 'medium' || f.severity === 'low'
     ).length;
-    
+
     scanResult.metrics = {
       total_checks: allFindings.length,
       failed_checks: failedChecks,
       warnings: warnings,
       passed_checks: Math.max(0, totalChecks - allFindings.length),
       resources_scanned: scannerTypes.length,
-      scan_coverage: Math.round((scannerTypes.length / Object.keys(SCANNER_CONFIGS).length) * 100)
+      scan_coverage: Math.round((scannerTypes.length / Object.keys(SCANNER_CONFIGS).length) * 100),
     };
-    
+
     if (!this.isTestMode) {
-      console.log(`✅ Comprehensive scan completed: ${allFindings.length} findings across ${scannerTypes.length} scanners`);
+      console.log(
+        `✅ Comprehensive scan completed: ${allFindings.length} findings across ${scannerTypes.length} scanners`
+      );
     }
   }
 
@@ -425,16 +450,16 @@ export class ZeroTrustScanner {
    * Graceful shutdown
    */
   async shutdown(): Promise<void> {
-  if (!this.isTestMode && !this.quiet) {
+    if (!this.isTestMode && !this.quiet) {
       console.log('🛑 Shutting down Zero-Trust Scanner...');
     }
-    
+
     // Cancel all active scans
     for (const scanId of this.activeScans.keys()) {
       await this.cancelScan(scanId);
     }
-    
-  if (!this.isTestMode && !this.quiet) {
+
+    if (!this.isTestMode && !this.quiet) {
       console.log('✅ Zero-Trust Scanner shutdown complete');
     }
   }
