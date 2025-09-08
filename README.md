@@ -19,6 +19,7 @@ Enterprise‑grade security scanning for networks, identities, supply chains, an
 - Configuration
 - Real‑time dashboard
 - Security hardening
+- Output path safety
 - Development
 - CI & Releases
 - Contributing
@@ -157,6 +158,25 @@ Status API: `http://localhost:3002/api/status` (port = monitorPort + 1)
 ## 🔐 Security hardening
 
 Transport:
+
+## 🗂️ Output path safety
+
+By default, file outputs are constrained to safe directories. The CLI and core exporters validate paths and prevent writing outside allowed roots.
+
+- The base output directory is configured via `scanner.outputDirectory` (default: `./reports`).
+- `--out-file` paths are resolved under this directory and sanitized to block traversal (e.g., `..\..\` on Windows).
+
+Example (PowerShell):
+
+```powershell
+# Configure output directory
+Set-Content -Path .\ztis.config.json -Value '{"scanner":{"outputDirectory":".\\reports"}}'
+
+# Write YAML to a file inside the output directory
+node dist/cli.js network --output yaml --out-file results\\net.yaml
+```
+
+If a provided path resolves outside the configured output directory, the command will fail with a safety error.
 
 - Run behind TLS (wss) via reverse proxy/ingress.
 - Restrict access at the network layer to trusted admin IPs.
