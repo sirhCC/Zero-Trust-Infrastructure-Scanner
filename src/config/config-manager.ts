@@ -9,6 +9,7 @@ import Joi from 'joi';
 import Ajv, { ErrorObject } from 'ajv';
 import addFormats from 'ajv-formats';
 import * as path from 'path';
+import { sanitizeOutputPath } from '../utils/path-safe';
 
 export interface ZTISConfig {
   scanner: ScannerConfig;
@@ -160,7 +161,9 @@ const configSchema = Joi.object({
     scanTimeout: Joi.number().min(30000).default(300000),
     retryAttempts: Joi.number().min(0).max(5).default(3),
     outputDirectory: Joi.string().default('./reports'),
-    reportFormats: Joi.array().items(Joi.string().valid('json', 'yaml', 'html', 'pdf')).default(['json', 'html'])
+    reportFormats: Joi.array()
+      .items(Joi.string().valid('json', 'yaml', 'html', 'pdf'))
+      .default(['json', 'html']),
   }).default(),
 
   network: Joi.object({
@@ -169,65 +172,87 @@ const configSchema = Joi.object({
     excludedNetworks: Joi.array().items(Joi.string()).default([]),
     portScanEnabled: Joi.boolean().default(true),
     serviceScanEnabled: Joi.boolean().default(true),
-    cloudProviders: Joi.array().items(Joi.object({
-      name: Joi.string().valid('aws', 'azure', 'gcp').required(),
-      enabled: Joi.boolean().default(false),
-      regions: Joi.array().items(Joi.string()).default([]),
-      credentials: Joi.object().optional()
-    })).default([])
+    cloudProviders: Joi.array()
+      .items(
+        Joi.object({
+          name: Joi.string().valid('aws', 'azure', 'gcp').required(),
+          enabled: Joi.boolean().default(false),
+          regions: Joi.array().items(Joi.string()).default([]),
+          credentials: Joi.object().optional(),
+        })
+      )
+      .default([]),
   }).default(),
 
   identity: Joi.object({
-    providers: Joi.array().items(Joi.object({
-      type: Joi.string().valid('aws-iam', 'azure-ad', 'k8s-rbac', 'local', 'ldap').required(),
-      name: Joi.string().required(),
-      enabled: Joi.boolean().default(true),
-      endpoint: Joi.string().optional(),
-      credentials: Joi.object().optional()
-    })).default([]),
+    providers: Joi.array()
+      .items(
+        Joi.object({
+          type: Joi.string().valid('aws-iam', 'azure-ad', 'k8s-rbac', 'local', 'ldap').required(),
+          name: Joi.string().required(),
+          enabled: Joi.boolean().default(true),
+          endpoint: Joi.string().optional(),
+          credentials: Joi.object().optional(),
+        })
+      )
+      .default([]),
     privilegeThresholds: Joi.object({
       low: Joi.number().default(20),
       medium: Joi.number().default(50),
       high: Joi.number().default(80),
-      critical: Joi.number().default(95)
+      critical: Joi.number().default(95),
     }).default(),
     includeServiceAccounts: Joi.boolean().default(true),
-    analyzePermissionBoundaries: Joi.boolean().default(true)
+    analyzePermissionBoundaries: Joi.boolean().default(true),
   }).default(),
 
   supplyChain: Joi.object({
-    registries: Joi.array().items(Joi.object({
-      name: Joi.string().required(),
-      url: Joi.string().uri().required(),
-      type: Joi.string().valid('docker', 'ecr', 'acr', 'gcr', 'harbor').required(),
-      credentials: Joi.object().optional()
-    })).default([]),
-    packageManagers: Joi.array().items(Joi.string().valid('npm', 'yarn', 'pip', 'maven', 'gradle', 'nuget')).default(['npm', 'pip']),
+    registries: Joi.array()
+      .items(
+        Joi.object({
+          name: Joi.string().required(),
+          url: Joi.string().uri().required(),
+          type: Joi.string().valid('docker', 'ecr', 'acr', 'gcr', 'harbor').required(),
+          credentials: Joi.object().optional(),
+        })
+      )
+      .default([]),
+    packageManagers: Joi.array()
+      .items(Joi.string().valid('npm', 'yarn', 'pip', 'maven', 'gradle', 'nuget'))
+      .default(['npm', 'pip']),
     vulnerabilityDatabases: Joi.array().items(Joi.string()).default(['nvd', 'snyk', 'github']),
     severityThreshold: Joi.string().valid('low', 'medium', 'high', 'critical').default('medium'),
     includeDevelopmentDependencies: Joi.boolean().default(false),
-    licenseChecking: Joi.boolean().default(true)
+    licenseChecking: Joi.boolean().default(true),
   }).default(),
 
   compliance: Joi.object({
-    standards: Joi.array().items(Joi.object({
-      name: Joi.string().valid('SOC2', 'PCI', 'HIPAA', 'GDPR', 'ISO27001').required(),
-      enabled: Joi.boolean().default(true),
-      controls: Joi.array().items(Joi.string()).default([]),
-      excludedControls: Joi.array().items(Joi.string()).default([]),
-      customRules: Joi.array().items(Joi.string()).optional()
-    })).default([]),
-    reportingFormats: Joi.array().items(Joi.string().valid('json', 'html', 'pdf', 'xml')).default(['html', 'pdf']),
+    standards: Joi.array()
+      .items(
+        Joi.object({
+          name: Joi.string().valid('SOC2', 'PCI', 'HIPAA', 'GDPR', 'ISO27001').required(),
+          enabled: Joi.boolean().default(true),
+          controls: Joi.array().items(Joi.string()).default([]),
+          excludedControls: Joi.array().items(Joi.string()).default([]),
+          customRules: Joi.array().items(Joi.string()).optional(),
+        })
+      )
+      .default([]),
+    reportingFormats: Joi.array()
+      .items(Joi.string().valid('json', 'html', 'pdf', 'xml'))
+      .default(['html', 'pdf']),
     evidenceCollection: Joi.boolean().default(true),
-    autoRemediation: Joi.boolean().default(false)
+    autoRemediation: Joi.boolean().default(false),
   }).default(),
 
   logging: Joi.object({
     level: Joi.string().valid('debug', 'info', 'warn', 'error').default('info'),
-    outputs: Joi.array().items(Joi.string().valid('console', 'file', 'syslog')).default(['console', 'file']),
+    outputs: Joi.array()
+      .items(Joi.string().valid('console', 'file', 'syslog'))
+      .default(['console', 'file']),
     structuredLogging: Joi.boolean().default(true),
     retentionDays: Joi.number().min(1).default(30),
-    auditLogging: Joi.boolean().default(true)
+    auditLogging: Joi.boolean().default(true),
   }).default(),
 
   server: Joi.object({
@@ -239,24 +264,24 @@ const configSchema = Joi.object({
       enabled: Joi.boolean().default(false),
       type: Joi.string().valid('jwt', 'oauth', 'basic').default('jwt'),
       secret: Joi.string().optional(),
-      providers: Joi.array().optional()
+      providers: Joi.array().optional(),
     }).default(),
     rateLimit: Joi.object({
       enabled: Joi.boolean().default(true),
       windowMs: Joi.number().default(900000), // 15 minutes
-      maxRequests: Joi.number().default(100)
-    }).default()
+      maxRequests: Joi.number().default(100),
+    }).default(),
   }).default(),
 
   security: Joi.object({
     encryption: Joi.object({
       algorithm: Joi.string().default('aes-256-gcm'),
-      keyLength: Joi.number().default(256)
+      keyLength: Joi.number().default(256),
     }).default(),
     dataRetention: Joi.object({
       scanResults: Joi.number().default(90), // days
       logs: Joi.number().default(30),
-      reports: Joi.number().default(365)
+      reports: Joi.number().default(365),
     }).default(),
     accessControl: Joi.object({
       enabled: Joi.boolean().default(false),
@@ -264,10 +289,10 @@ const configSchema = Joi.object({
       roles: Joi.object().default({
         admin: ['read', 'write', 'delete', 'configure'],
         operator: ['read', 'write'],
-        viewer: ['read']
-      })
-    }).default()
-  }).default()
+        viewer: ['read'],
+      }),
+    }).default(),
+  }).default(),
 });
 
 export class ConfigManager {
@@ -305,7 +330,7 @@ export class ConfigManager {
     try {
       const schemaRaw = fs.readFileSync(schemaPath, 'utf8');
       this.jsonSchema = JSON.parse(schemaRaw);
-    } catch (e) {
+    } catch (_e) {
       // If schema missing, proceed with Joi-only validation but warn
       console.warn('⚠️  JSON Schema not found; falling back to Joi validation only');
       this.jsonSchema = null;
@@ -323,7 +348,7 @@ export class ConfigManager {
 
       if (fs.existsSync(this.configPath)) {
         const fileContent = fs.readFileSync(this.configPath, 'utf8');
-        
+
         if (this.configPath.endsWith('.yaml') || this.configPath.endsWith('.yml')) {
           configData = yaml.parse(fileContent);
         } else {
@@ -360,7 +385,6 @@ export class ConfigManager {
 
       this.config = candidate;
       console.log('✅ Configuration loaded successfully');
-
     } catch (error) {
       console.error('❌ Failed to load configuration:', error);
       throw error;
@@ -395,10 +419,14 @@ export class ConfigManager {
     if (env.ZTIS_API_ENABLED) set(['server', 'apiEnabled'], mapBool(env.ZTIS_API_ENABLED));
     if (env.ZTIS_WEB_ENABLED) set(['server', 'webInterfaceEnabled'], mapBool(env.ZTIS_WEB_ENABLED));
     if (env.ZTIS_LOGGING_LEVEL) set(['logging', 'level'], env.ZTIS_LOGGING_LEVEL);
-    if (env.ZTIS_LOG_RETENTION_DAYS) set(['logging', 'retentionDays'], mapNumber(env.ZTIS_LOG_RETENTION_DAYS));
-    if (env.ZTIS_SCANNER_PARALLEL) set(['scanner', 'parallelScans'], mapNumber(env.ZTIS_SCANNER_PARALLEL));
-    if (env.ZTIS_SCANNER_TIMEOUT) set(['scanner', 'scanTimeout'], mapNumber(env.ZTIS_SCANNER_TIMEOUT));
-    if (env.ZTIS_SCANNER_RETRIES) set(['scanner', 'retryAttempts'], mapNumber(env.ZTIS_SCANNER_RETRIES));
+    if (env.ZTIS_LOG_RETENTION_DAYS)
+      set(['logging', 'retentionDays'], mapNumber(env.ZTIS_LOG_RETENTION_DAYS));
+    if (env.ZTIS_SCANNER_PARALLEL)
+      set(['scanner', 'parallelScans'], mapNumber(env.ZTIS_SCANNER_PARALLEL));
+    if (env.ZTIS_SCANNER_TIMEOUT)
+      set(['scanner', 'scanTimeout'], mapNumber(env.ZTIS_SCANNER_TIMEOUT));
+    if (env.ZTIS_SCANNER_RETRIES)
+      set(['scanner', 'retryAttempts'], mapNumber(env.ZTIS_SCANNER_RETRIES));
 
     return out;
   }
@@ -441,14 +469,15 @@ export class ConfigManager {
 
     try {
       let content: string;
-      
+
       if (this.configPath.endsWith('.yaml') || this.configPath.endsWith('.yml')) {
         content = yaml.stringify(this.config);
       } else {
         content = JSON.stringify(this.config, null, 2);
       }
 
-      fs.writeFileSync(this.configPath, content, 'utf8');
+      const safe = sanitizeOutputPath(this.configPath);
+      fs.writeFileSync(safe, content, 'utf8');
       console.log('✅ Configuration saved successfully');
     } catch (error) {
       console.error('❌ Failed to save configuration:', error);
@@ -461,9 +490,9 @@ export class ConfigManager {
    */
   public async createDefaultConfig(filePath?: string): Promise<void> {
     const path = filePath || this.configPath;
-    
+
     const { value } = configSchema.validate({}, { allowUnknown: false });
-    
+
     let content: string;
     if (path.endsWith('.yaml') || path.endsWith('.yml')) {
       content = yaml.stringify(value);
@@ -471,7 +500,8 @@ export class ConfigManager {
       content = JSON.stringify(value, null, 2);
     }
 
-    fs.writeFileSync(path, content, 'utf8');
+    const safe = sanitizeOutputPath(path);
+    fs.writeFileSync(safe, content, 'utf8');
     console.log(`✅ Default configuration created: ${path}`);
   }
 
@@ -484,11 +514,11 @@ export class ConfigManager {
     }
 
     const { error } = configSchema.validate(this.config);
-    
+
     if (error) {
-      return { 
-        valid: false, 
-        errors: error.details.map(detail => detail.message) 
+      return {
+        valid: false,
+        errors: error.details.map((detail) => detail.message),
       };
     }
 
