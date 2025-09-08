@@ -71,7 +71,9 @@ export const registerSupplyChainCommands: RegisterCommands = (program: Command) 
           const payload =
             rootOpts.output === 'yaml' ? YAML.stringify(result) : JSON.stringify(result, null, 2);
           if (options.outFile) {
-            const outPath = sanitizeOutputPath(options.outFile);
+            const outPath = sanitizeOutputPath(options.outFile, {
+              baseDir: cfg?.scanner?.outputDirectory,
+            });
             const dir = path.dirname(outPath);
             if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
             fs.writeFileSync(outPath, payload, 'utf8');
