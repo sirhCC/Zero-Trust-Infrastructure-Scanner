@@ -109,7 +109,7 @@ This is a well-structured TypeScript mono-service with a clean CLI, modular scan
 
 - [x] JWT required when auth enabled; static tokens discouraged
 - [x] Origin/IP allowlists configured in production
-- [ ] TLS termination (wss) documented and tested
+- [x] TLS termination (wss) documented and tested
 - [ ] Rate limiting for WS connects/auth failures
 - [x] Output path sanitization and safe defaults (sanitizeOutputPath utility; applied to CLI out-file, exportReport, saveBaseline, and config save)
 - [ ] `npm audit` zero known high/critical
