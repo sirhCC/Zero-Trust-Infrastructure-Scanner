@@ -75,6 +75,19 @@ export interface WebSocketConfig {
   max_token_length?: number; // default 4096
   ping_interval_ms?: number; // default 30000
   pong_timeout_ms?: number; // default 10000
+  // Auth rate limiting (per IP)
+  auth_rate_limit?: {
+    window_ms?: number; // sliding window size; default 60000
+    max_attempts?: number; // max failed attempts per window; default 10
+    block_duration_ms?: number; // temporary block duration; default 300000 (5m)
+  };
+  // Backpressure handling
+  backpressure?: {
+    max_buffered_bytes?: number; // drop when client.bufferedAmount exceeds; default 1_000_000
+    warn_buffered_bytes?: number; // warn when exceeding; default half of max
+    drop_if_exceeds?: boolean; // default true (drop msg to slow client)
+    close_after_drops?: number; // close slow client after consecutive drops; default 5
+  };
 }
 
 export interface ChangeDetectionConfig {
@@ -124,6 +137,11 @@ export class RealTimeMonitor extends EventEmitter {
     WebSocket,
     { isAlive: boolean; interval: NodeJS.Timeout; lastPong: number }
   > = new Map();
+  // Per-IP auth attempt tracking for rate limiting
+  private authAttemptMap: Map<string, { attempts: number[]; blockedUntil?: number }> = new Map();
+  // Backpressure metrics/state
+  private slowClientDropCounts: WeakMap<WebSocket, number> = new WeakMap();
+  private wsDroppedMessages: number = 0;
 
   constructor(config: MonitoringConfig) {
     super();
@@ -351,6 +369,24 @@ export class RealTimeMonitor extends EventEmitter {
       // Simple token/JWT auth if enabled
       if (this.config.websocket.authentication) {
         try {
+          // Per-IP auth rate limiting: check temporary block first
+          const rlCfg = this.config.websocket.auth_rate_limit || {};
+          const rlWindow = rlCfg.window_ms ?? 60_000;
+          const rlMax = rlCfg.max_attempts ?? 10;
+          const rlBlock = rlCfg.block_duration_ms ?? 300_000; // 5 minutes
+          if (clientIp) {
+            const entry = this.authAttemptMap.get(clientIp);
+            if (entry && entry.blockedUntil && Date.now() < entry.blockedUntil) {
+              try {
+                ws.close(1013, 'Temporarily blocked');
+              } catch {
+                /* ignore */
+              }
+              logger.warn(`❌ WebSocket auth temporarily blocked for ${clientIp}`);
+              return;
+            }
+          }
+
           const headerName = (
             this.config.websocket.token_header ||
             process.env.ZTIS_WS_TOKEN_HEADER ||
@@ -433,6 +469,21 @@ export class RealTimeMonitor extends EventEmitter {
           }
 
           if (!authorized) {
+            // Record failed attempt and possibly block further attempts
+            if (clientIp) {
+              const now = Date.now();
+              const entry = this.authAttemptMap.get(clientIp) || { attempts: [] };
+              // prune old attempts outside window
+              entry.attempts = entry.attempts.filter((t) => now - t <= rlWindow);
+              entry.attempts.push(now);
+              if (entry.attempts.length >= rlMax) {
+                entry.blockedUntil = now + rlBlock;
+                logger.warn(
+                  `⛔ WebSocket auth rate limit exceeded for ${clientIp} (blocked for ${rlBlock}ms)`
+                );
+              }
+              this.authAttemptMap.set(clientIp, entry);
+            }
             try {
               ws.close(1008, 'Invalid or missing auth token');
             } catch {
@@ -440,6 +491,10 @@ export class RealTimeMonitor extends EventEmitter {
             }
             logger.warn(`❌ WebSocket auth failed for ${clientIp}`);
             return;
+          }
+          // On successful auth, reset attempt counters for this IP
+          if (clientIp) {
+            this.authAttemptMap.delete(clientIp);
           }
         } catch (e) {
           try {
@@ -1015,15 +1070,50 @@ export class RealTimeMonitor extends EventEmitter {
    */
   private broadcastLiveUpdate(update: LiveUpdate): void {
     const message = JSON.stringify(update);
+    const bp = this.config.websocket.backpressure || {};
+    const maxBuffered = bp.max_buffered_bytes ?? 1_000_000; // 1MB
+    const warnBuffered = bp.warn_buffered_bytes ?? Math.floor(maxBuffered / 2);
+    const dropIfExceeds = bp.drop_if_exceeds !== false; // default true
+    const closeAfterDrops = bp.close_after_drops ?? 5;
 
     for (const client of this.connectedClients) {
-      if (client.readyState === WebSocket.OPEN) {
-        try {
-          client.send(message);
-        } catch (error) {
-          logger.error('Error sending WebSocket message:', error);
-          this.connectedClients.delete(client);
+      if (client.readyState !== WebSocket.OPEN) continue;
+      try {
+        const buffered = (client as any).bufferedAmount || 0;
+        if (buffered > warnBuffered) {
+          logger.warn(
+            `WebSocket client bufferedAmount high: ${buffered} bytes (warn=${warnBuffered}, max=${maxBuffered})`
+          );
         }
+        if (dropIfExceeds && buffered > maxBuffered) {
+          // Drop message for this slow client
+          this.wsDroppedMessages += 1;
+          const drops = (this.slowClientDropCounts.get(client) || 0) + 1;
+          this.slowClientDropCounts.set(client, drops);
+          if (drops >= closeAfterDrops) {
+            try {
+              client.close(1011, 'Slow consumer');
+            } catch {
+              /* ignore */
+            }
+            this.connectedClients.delete(client);
+            logger.warn(
+              `Closed slow WebSocket client after ${drops} consecutive drops (buffered=${buffered})`
+            );
+          } else {
+            logger.debug(
+              `Dropped broadcast to slow client (drop ${drops}/${closeAfterDrops}, buffered=${buffered})`
+            );
+          }
+          continue;
+        }
+        // Send normally
+        client.send(message);
+        // Reset drop counter on successful send
+        if (this.slowClientDropCounts.has(client)) this.slowClientDropCounts.delete(client);
+      } catch (error) {
+        logger.error('Error sending WebSocket message:', error);
+        this.connectedClients.delete(client);
       }
     }
   }
@@ -1032,12 +1122,45 @@ export class RealTimeMonitor extends EventEmitter {
    * Send message to specific client
    */
   private sendToClient(client: WebSocket, update: LiveUpdate): void {
-    if (client.readyState === WebSocket.OPEN) {
-      try {
-        client.send(JSON.stringify(update));
-      } catch (error) {
-        logger.error('Error sending WebSocket message to client:', error);
+    if (client.readyState !== WebSocket.OPEN) return;
+    const bp = this.config.websocket.backpressure || {};
+    const maxBuffered = bp.max_buffered_bytes ?? 1_000_000; // 1MB
+    const warnBuffered = bp.warn_buffered_bytes ?? Math.floor(maxBuffered / 2);
+    const dropIfExceeds = bp.drop_if_exceeds !== false; // default true
+    const closeAfterDrops = bp.close_after_drops ?? 5;
+
+    try {
+      const buffered = (client as any).bufferedAmount || 0;
+      if (buffered > warnBuffered) {
+        logger.warn(
+          `WebSocket client bufferedAmount high: ${buffered} bytes (warn=${warnBuffered}, max=${maxBuffered})`
+        );
       }
+      if (dropIfExceeds && buffered > maxBuffered) {
+        // Drop this message to avoid pressure
+        this.wsDroppedMessages += 1;
+        const drops = (this.slowClientDropCounts.get(client) || 0) + 1;
+        this.slowClientDropCounts.set(client, drops);
+        if (drops >= closeAfterDrops) {
+          try {
+            client.close(1011, 'Slow consumer');
+          } catch {
+            /* ignore */
+          }
+          logger.warn(
+            `Closed slow WebSocket client after ${drops} consecutive drops (buffered=${buffered})`
+          );
+        } else {
+          logger.debug(
+            `Dropped message to slow client (drop ${drops}/${closeAfterDrops}, buffered=${buffered})`
+          );
+        }
+        return;
+      }
+      client.send(JSON.stringify(update));
+      if (this.slowClientDropCounts.has(client)) this.slowClientDropCounts.delete(client);
+    } catch (error) {
+      logger.error('Error sending WebSocket message to client:', error);
     }
   }
 
@@ -1108,6 +1231,7 @@ export class RealTimeMonitor extends EventEmitter {
     connected_clients: number;
     alerts_queued: number;
     behavioral_stats: any;
+    ws_dropped_messages?: number;
   } {
     return {
       targets: this.config.targets.length,
@@ -1115,6 +1239,7 @@ export class RealTimeMonitor extends EventEmitter {
       connected_clients: this.connectedClients.size,
       alerts_queued: this.alertQueue.length,
       behavioral_stats: this.behavioralAnalysis.getBehavioralStats(),
+      ws_dropped_messages: this.wsDroppedMessages,
     };
   }
 
