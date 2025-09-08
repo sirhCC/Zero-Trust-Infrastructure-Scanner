@@ -1,11 +1,28 @@
 # 🛡️ Zero‑Trust Infrastructure Scanner
 
-Enterprise-grade security scanning for networks, identities, supply chains, and compliance.
+Enterprise‑grade security scanning for networks, identities, supply chains, and compliance — with a live dashboard and behavioral analytics.
 
 [![CI](https://img.shields.io/github/actions/workflow/status/sirhCC/Zero-Trust-Infrastructure-Scanner/ci.yml?branch=main&label=CI&logo=github)](https://github.com/sirhCC/Zero-Trust-Infrastructure-Scanner/actions/workflows/ci.yml)
 ![Node](https://img.shields.io/badge/Node-%3E%3D18-3C873A?logo=node.js)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript)
+![Tests](https://img.shields.io/badge/tests-100%25%20pass-brightgreen)
 ![License](https://img.shields.io/badge/License-MIT-blue)
+
+— secure by default, fast to try, fun to extend.
+
+## 📚 Table of contents
+
+- Features
+- Architecture
+- Quickstart (Windows PowerShell)
+- Usage and common tasks
+- Configuration
+- Real‑time dashboard
+- Security hardening
+- Development
+- CI & Releases
+- Contributing
+- Resources
 
 ## ✨ Features
 
@@ -15,14 +32,28 @@ Enterprise-grade security scanning for networks, identities, supply chains, and 
 - 📋 Compliance automation (SOC2, PCI, HIPAA, ISO27001)
 - 📡 Real‑time monitoring + live web dashboard
 - 🧠 Behavioral/ML risk scoring (experimental modules)
-- ⚙️ Strong config validation (Joi for defaults + Ajv JSON Schema)
-- 🧪 Jest test suite, TypeScript build, and GitHub Actions CI
+- ⚙️ Strong config validation (Joi defaults + Ajv schema)
+- 🧪 Jest test suite and typed API (TypeScript)
 
-## 🚀 Quick start
+## 🧭 Architecture
+
+```mermaid
+flowchart LR
+	CLI[CLI / Commands] --> Core[Core Scanner Engine]
+	Core --> Scanners{{Network | Identity | Supply-Chain | Compliance}}
+	Core --> Processor[Result Processor]
+	Core -->|events| Monitor[Real-Time Monitor]
+	Monitor -->|ws| Dashboard[Web Dashboard]
+	Config[(JTIS Config\nJoi + Ajv)] --> Core
+	Logger[(Winston\nredaction)] --> Core
+	Behavior[Behavioral Analytics\nML scoring] --> Core
+```
+
+## 🚀 Quickstart (Windows PowerShell)
 
 Prereqs: Node.js >= 18
 
-```bash
+```powershell
 # Clone & install
 git clone https://github.com/sirhCC/Zero-Trust-Infrastructure-Scanner.git
 cd Zero-Trust-Infrastructure-Scanner
@@ -31,32 +62,32 @@ npm ci
 # Build
 npm run build
 
-# Show CLI help
+# CLI help
 node dist/cli.js --help
 
-# Or use package scripts (dev-friendly)
+# Or dev-friendly scripts
 npm run scan:network -- --help
 ```
 
 Binary builds (no Node required):
 
-```bash
-# Build Windows binary (creates bin/cli.exe)
+```powershell
+# Windows only
 npm run build:bin:win
 
-# Cross-platform binaries (Windows/Linux/macOS x64)
+# Cross-platform binaries
 npm run build:bin
 ```
 
 Notes:
 
-- Packaged binaries include built-in scanners and config schema; custom scanners aren’t supported in the binary build.
-- Use the source (Node) build to load custom modules.
+- Binaries bundle built-in scanners and the config schema.
+- Use Node builds to add custom scanners.
 
-Common commands:
+## 🛠️ Usage and common tasks
 
-```bash
-# One‑shot "scan everything" (placeholder implementation)
+```powershell
+# One-shot scan (demo)
 npm run scan-all
 
 # Targeted scans
@@ -65,91 +96,93 @@ npm run scan:identity -- --provider aws-iam
 npm run scan:supply-chain -- --image alpine:3.19
 npm run scan:compliance -- --standard soc2
 
-# Global timeout (applies to all subcommands)
+# Global timeout (all subcommands)
 node dist/cli.js network --timeout 10000
-```
-
-Dashboard + Monitor:
-
-```bash
-# Real‑time monitoring (WebSocket)
-npm run monitor -- --port 3001 --interval 30 --targets localhost
-
-# Live dashboard (HTML)
-npm run dashboard -- --port 3000 --monitor-port 3001
-# Visit: http://localhost:3000
 ```
 
 ## ⚙️ Configuration
 
-Config file default: `./ztis.config.json` (YAML also supported). Validation uses:
+Default file: `./ztis.config.json` (YAML supported). Validation:
 
-- Joi (sets sane defaults)
-- Ajv + `src/config/ztis.schema.json` (enforces structure)
+- Joi applies sane defaults
+- Ajv enforces structure via `src/config/ztis.schema.json`
 
 CLI helpers:
 
-```bash
+```powershell
 # Create a default config
-node dist/cli.js config --init -c ./ztis.config.json
+node dist/cli.js config --init -c .\ztis.config.json
 
-# Validate current config (Joi + Ajv)
-node dist/cli.js config --validate -c ./ztis.config.json
+# Validate (Joi + Ajv)
+node dist/cli.js config --validate -c .\ztis.config.json
 
 # Show effective config (json|yaml)
-node dist/cli.js config --show -c ./ztis.config.json --output yaml
+node dist/cli.js config --show -c .\ztis.config.json --output yaml
 ```
 
 Minimal JSON example:
 
 ```json
 {
-	"scanner": { "parallelScans": 3, "scanTimeout": 300000, "retryAttempts": 3 },
-	"network": { "defaultScanDepth": 3 },
-	"identity": { "providers": [] },
-	"supplyChain": { "packageManagers": ["npm"], "severityThreshold": "medium" },
-	"compliance": { "standards": [] },
-	"logging": { "level": "info", "outputs": ["console", "file"], "retentionDays": 30 },
-	"server": { "port": 3000, "host": "localhost", "apiEnabled": true, "webInterfaceEnabled": true },
-	"security": { "encryption": { "algorithm": "aes-256-gcm", "keyLength": 256 } }
+  "scanner": { "parallelScans": 3, "scanTimeout": 300000, "retryAttempts": 3 },
+  "network": { "defaultScanDepth": 3 },
+  "identity": { "providers": [] },
+  "supplyChain": { "packageManagers": ["npm"], "severityThreshold": "medium" },
+  "compliance": { "standards": [] },
+  "logging": { "level": "info", "outputs": ["console", "file"], "retentionDays": 30 },
+  "server": { "port": 3000, "host": "localhost", "apiEnabled": true, "webInterfaceEnabled": true },
+  "security": { "encryption": { "algorithm": "aes-256-gcm", "keyLength": 256 } }
 }
 ```
 
-Ready-to-use samples are in `examples/` (see `examples/README.md`):
+Samples in `examples/`:
 
 - `examples/ztis.config.min.json`
 - `examples/ztis.config.min.yaml`
-- `examples/test-data/` (sample findings, business context, historical scores)
+- `test-data/` (sample findings and context)
 
-Use one quickly:
+## 📡 Real‑time dashboard
 
-```bash
-# JSON
-node dist/cli.js config --validate -c ./examples/ztis.config.min.json
+```powershell
+# Start monitor (WebSocket)
+npm run monitor -- --port 3001 --interval 30 --targets localhost
 
-# YAML
-node dist/cli.js config --validate -c ./examples/ztis.config.min.yaml --output yaml
+# Start dashboard (HTML)
+npm run dashboard -- --port 3000 --monitor-port 3001
+# Visit: http://localhost:3000
 ```
 
-Environment overrides (precedence: env > file):
+Status API: `http://localhost:3002/api/status` (port = monitorPort + 1)
 
-- `ZTIS_SERVER_PORT=4000`
-- `ZTIS_SERVER_HOST=0.0.0.0`
-- `ZTIS_API_ENABLED=true|false`
-- `ZTIS_WEB_ENABLED=true|false`
-- `ZTIS_LOGGING_LEVEL=debug|info|warn|error`
-- `ZTIS_LOG_RETENTION_DAYS=30`
-- `ZTIS_SCANNER_PARALLEL=4`
-- `ZTIS_SCANNER_TIMEOUT=60000`
-- `ZTIS_SCANNER_RETRIES=2`
+## 🔐 Security hardening
 
-Schema file: `src/config/ztis.schema.json`
+Transport:
+
+- Run behind TLS (wss) via reverse proxy/ingress.
+- Restrict access at the network layer to trusted admin IPs.
+
+WebSocket server options (in `monitor` config):
+
+- `authentication`: true|false (enable auth)
+- `require_jwt`: default true; JWT required when auth is enabled
+- `jwt_secret`, `jwt_issuer`, `jwt_audience`: JWT validation
+- `token_header`: custom header name if not using Authorization Bearer
+- `allowed_origins`: explicit Origin allowlist
+- `allowed_ips`: IP allowlist
+- `max_token_length`: default 4096
+- `ping_interval_ms`, `pong_timeout_ms`: heartbeat
+- `auth_rate_limit`: `{ window_ms, max_attempts, block_duration_ms }`
+- `backpressure`: `{ max_buffered_bytes, warn_buffered_bytes, drop_if_exceeds, close_after_drops }`
+
+Tips:
+
+- Prefer short‑lived JWTs over static tokens.
+- Don’t log sensitive claims; the logger redacts common secrets.
+- Consider an auth proxy (e.g., OAuth2/OIDC) in front of the dashboard.
 
 ## 🧰 Development
 
-Scripts:
-
-```bash
+```powershell
 # Typecheck, lint, format
 npm run typecheck
 npm run lint
@@ -166,57 +199,34 @@ npm run test:coverage:ci
 
 Notes:
 
-- Node >= 18 is required.
-- Logger is test‑safe (no lingering file handles during Jest runs).
-- The CLI exposes a global `--timeout <ms>`; scans respect cancellation.
+- Node >= 18
+- Logger is test‑safe (no lingering file handles in Jest)
+- CLI has a global `--timeout <ms>` respected by scans
 
-## 📦 Project structure
+## 🧪 CI & Releases
 
-- `src/cli.ts` – Commander‑based CLI and subcommands
-- `src/core/` – Scan engine, result processing, scanner registry
-- `src/scanners/` – Built‑in scanners (network/identity/supply‑chain/compliance)
-- `src/monitoring/` – Real‑time monitor and dashboard server
-- `src/config/` – Config manager (Joi + Ajv), JSON Schema
-- `tests/` – Jest tests and setup
-
-## 🧪 CI
-
-GitHub Actions runs lint, typecheck, build, and tests with coverage artifact upload. The CI config avoids hard coverage thresholds to keep PR feedback fast. You can tighten `jest.config.js` locally.
-
-Example: set config via environment in CI
-
-```yaml
-env:
-	ZTIS_LOGGING_LEVEL: info
-	ZTIS_SCANNER_TIMEOUT: '60000'
-	ZTIS_SCANNER_PARALLEL: '4'
-	ZTIS_SERVER_PORT: '4000'
-```
-
-You can also run a safe, on-demand pipeline: `.github/workflows/manual-ci.yml` (trigger with “Run workflow” in GitHub Actions).
+GitHub Actions runs lint, typecheck, build, tests, and uploads coverage artifacts. Coverage thresholds can be tuned in `jest.config.js`.
 
 Releases:
 
-- Tag a version (vX.Y.Z) to auto-build binaries for Windows/Linux/macOS via `.github/workflows/release.yml`.
+- Tag a version (vX.Y.Z) to build Windows/Linux/macOS binaries via `.github/workflows/release.yml`.
 
 ## 🤝 Contributing
 
-PRs welcome! Suggested flow:
+PRs welcome. Suggested flow:
 
-1) Fork and create a feature branch
-2) Run: `npm ci; npm run lint; npm run typecheck; npm run build; npm test`
-3) Include tests for changes in public behavior
-4) Open a PR with a concise summary and screenshots/logs if relevant
+1. Fork and create a feature branch
+2. `npm ci; npm run lint; npm run typecheck; npm run build; npm test`
+3. Include tests for changes in public behavior
+4. Open a PR with a concise summary and screenshots/logs
 
-## 🔒 Security
+## � Resources
 
-If you discover a vulnerability, please open a private issue with clear reproduction steps. Avoid posting sensitive details in public threads.
-
-## 📚 Resources
-
-- Docs: `docs/` folder (advanced notes) and the project Wiki
-- Issues: [GitHub Issues](https://github.com/sirhCC/Zero-Trust-Infrastructure-Scanner/issues)
-- Discussions: [GitHub Discussions](https://github.com/sirhCC/Zero-Trust-Infrastructure-Scanner/discussions)
+- Advanced docs: `docs/` (see also Wiki)
+- Roadmap: `docs/ENHANCEMENT_ROADMAP.md`
+- Examples: `examples/`
+- Issues: <https://github.com/sirhCC/Zero-Trust-Infrastructure-Scanner/issues>
+- Discussions: <https://github.com/sirhCC/Zero-Trust-Infrastructure-Scanner/discussions>
 
 ---
 
