@@ -39,7 +39,7 @@ jobs:
 
       - name: Upload coverage
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: coverage
           path: coverage
