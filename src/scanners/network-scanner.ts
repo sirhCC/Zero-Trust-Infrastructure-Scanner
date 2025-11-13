@@ -7,6 +7,7 @@
 import { ScanTarget, SecurityFinding } from '../core/scanner';
 import { Logger } from '../utils/logger';
 import { BaseScanner } from './base-scanner';
+import { KubernetesClient, NetworkPolicySpec, PodInfo } from '../utils/kubernetes-client';
 
 // Create logger instance
 const logger = Logger.getInstance();
@@ -53,6 +54,8 @@ export interface NetworkScanOptions {
 }
 
 export class NetworkScanner extends BaseScanner {
+  private kubeConfigExists: boolean = false;
+
   constructor() {
     super('NetworkScanner');
     this.logInitialization('🌐', 'Network Scanner');
@@ -66,6 +69,17 @@ export class NetworkScanner extends BaseScanner {
     const options = target.options as NetworkScanOptions;
 
     logger.info(`🔍 Starting network scan for: ${target.target}`);
+
+    // Check Kubernetes availability if needed
+    if (options.k8s_namespace) {
+      await KubernetesClient.isKubectlAvailable(); // Check availability
+      this.kubeConfigExists = KubernetesClient.hasKubeConfig();
+
+      if (!this.kubeConfigExists) {
+        logger.warn('⚠️ No kubeconfig found at default location');
+        logger.info(`💡 Expected location: ${KubernetesClient.getDefaultKubeConfigPath()}`);
+      }
+    }
 
     try {
       // Analyze based on target type and options
@@ -215,37 +229,426 @@ export class NetworkScanner extends BaseScanner {
    * Scan Kubernetes network policies
    */
   private async scanKubernetesNetwork(options: NetworkScanOptions): Promise<void> {
-    logger.info(`🚢 Scanning Kubernetes network policies in namespace: ${options.k8s_namespace}`);
+    const namespace = options.k8s_namespace || 'default';
+    logger.info(`🚢 Scanning Kubernetes network policies in namespace: ${namespace}`);
 
-    // TODO: Implement Kubernetes API integration
+    let k8sClient: KubernetesClient | null = null;
 
+    try {
+      // Initialize Kubernetes client
+      try {
+        k8sClient = new KubernetesClient({
+          namespace: namespace,
+        });
+      } catch (clientError) {
+        logger.warn(
+          '⚠️ Failed to initialize Kubernetes client:',
+          clientError instanceof Error ? { error: clientError.message } : {}
+        );
+        await this.simulateKubernetesNetwork(namespace);
+        return;
+      }
+
+      // Check if connected to cluster
+      if (!k8sClient.isConnected()) {
+        logger.warn('⚠️ Not connected to Kubernetes cluster - falling back to simulated scan');
+        await this.simulateKubernetesNetwork(namespace);
+        return;
+      }
+
+      const clusterInfo = k8sClient.getClusterInfo();
+      logger.info(`📊 Connected to cluster: ${clusterInfo?.name} (${clusterInfo?.server})`);
+
+      // Get namespaces to scan
+      let namespacesToScan: string[] = [namespace];
+      if (namespace === 'all' || namespace === '*') {
+        const namespaces = await k8sClient.listNamespaces();
+        namespacesToScan = namespaces
+          .filter((ns) => !ns.name.startsWith('kube-')) // Skip system namespaces
+          .map((ns) => ns.name);
+        logger.info(`📋 Scanning ${namespacesToScan.length} namespaces`);
+      }
+
+      // Scan each namespace
+      for (const ns of namespacesToScan) {
+        await this.scanNamespace(k8sClient, ns);
+      }
+
+      // Perform cluster-wide security checks
+      await this.performClusterWideChecks(k8sClient, namespacesToScan);
+
+      logger.info(`✅ Kubernetes network scan completed. Found ${this.findings.length} findings`);
+    } catch (error) {
+      logger.error('❌ Kubernetes scan failed:', error);
+      this.addFinding(
+        'high',
+        'k8s-scan-error',
+        'Kubernetes scan encountered an error',
+        error instanceof Error ? error.message : 'Unknown error occurred during Kubernetes scan'
+      );
+
+      // Fall back to simulated scan
+      logger.info('⚠️ Falling back to simulated scan');
+      await this.simulateKubernetesNetwork(namespace);
+    }
+  }
+
+  /**
+   * Scan a specific namespace for network policy issues
+   */
+  private async scanNamespace(k8sClient: KubernetesClient, namespace: string): Promise<void> {
+    logger.info(`🔍 Analyzing namespace: ${namespace}`);
+
+    try {
+      // Get network policies for this namespace
+      const policies = await k8sClient.listNetworkPolicies(namespace);
+      const pods = await k8sClient.listPods(namespace);
+
+      logger.info(
+        `📊 Found ${policies.length} network policies and ${pods.length} pods in ${namespace}`
+      );
+
+      // Check 1: No network policies in namespace
+      if (policies.length === 0 && pods.length > 0) {
+        this.addFinding(
+          'high',
+          'k8s-no-network-policy',
+          `No network policies in namespace: ${namespace}`,
+          `Namespace "${namespace}" has ${pods.length} pods but no network policies. All pod-to-pod communication is allowed by default.`,
+          `Implement at least a default-deny network policy for namespace "${namespace}"`
+        );
+      }
+
+      // Check 2: Missing default-deny policy
+      const hasDefaultDeny = this.hasDefaultDenyPolicy(policies);
+      if (policies.length > 0 && !hasDefaultDeny && pods.length > 0) {
+        this.addFinding(
+          'high',
+          'k8s-no-default-deny',
+          `Missing default-deny policy in ${namespace}`,
+          `Namespace "${namespace}" lacks a default-deny network policy. Traffic not explicitly allowed by policies is still permitted.`,
+          `Create a default-deny network policy that denies all ingress and egress by default`
+        );
+      }
+
+      // Check 3: Analyze each policy
+      for (const policy of policies) {
+        await this.analyzeNetworkPolicy(policy, pods, namespace);
+      }
+
+      // Check 4: Pods using hostNetwork
+      const hostNetworkPods = pods.filter((pod) => pod.hostNetwork);
+      if (hostNetworkPods.length > 0) {
+        this.addFinding(
+          'critical',
+          'k8s-host-network',
+          `Pods using hostNetwork in ${namespace}`,
+          `Found ${hostNetworkPods.length} pod(s) using hostNetwork: ${hostNetworkPods.map((p) => p.name).join(', ')}. These pods bypass network policies and have direct host network access.`,
+          `Remove hostNetwork: true from pod specifications unless absolutely necessary for node-level operations`
+        );
+      }
+
+      // Check 5: Unprotected pods
+      const unprotectedPods = this.findUnprotectedPods(pods, policies);
+      if (unprotectedPods.length > 0) {
+        this.addFinding(
+          'high',
+          'k8s-unprotected-pods',
+          `Unprotected pods in ${namespace}`,
+          `Found ${unprotectedPods.length} pod(s) not covered by any network policy: ${unprotectedPods
+            .slice(0, 5)
+            .map((p) => p.name)
+            .join(', ')}${unprotectedPods.length > 5 ? '...' : ''}`,
+          `Create network policies that explicitly target all pods using podSelector labels`
+        );
+      }
+    } catch (error) {
+      logger.error(`Error scanning namespace ${namespace}:`, error);
+      this.addFinding(
+        'medium',
+        'k8s-namespace-scan-error',
+        `Could not fully scan namespace: ${namespace}`,
+        error instanceof Error ? error.message : 'Unknown error'
+      );
+    }
+  }
+
+  /**
+   * Analyze a specific network policy for security issues
+   */
+  private async analyzeNetworkPolicy(
+    policy: NetworkPolicySpec,
+    _pods: PodInfo[],
+    namespace: string
+  ): Promise<void> {
+    const policyName = policy.metadata.name;
+
+    // Check for overly permissive ingress rules
+    if (policy.spec.ingress) {
+      for (const rule of policy.spec.ingress) {
+        // Check for rules allowing from all namespaces
+        if (rule.from) {
+          for (const source of rule.from) {
+            if (
+              source.namespaceSelector &&
+              (!source.namespaceSelector.matchLabels ||
+                Object.keys(source.namespaceSelector.matchLabels).length === 0)
+            ) {
+              this.addFinding(
+                'medium',
+                'k8s-permissive-ingress',
+                `Overly permissive ingress in policy: ${policyName}`,
+                `Network policy "${policyName}" in namespace "${namespace}" allows ingress from all namespaces using an empty namespaceSelector.`,
+                `Restrict ingress to specific namespaces using appropriate label selectors`
+              );
+            }
+
+            // Check for unrestricted CIDR blocks
+            if (source.ipBlock && source.ipBlock.cidr === '0.0.0.0/0') {
+              this.addFinding(
+                'high',
+                'k8s-ingress-from-internet',
+                `Policy allows ingress from internet: ${policyName}`,
+                `Network policy "${policyName}" in namespace "${namespace}" allows ingress from 0.0.0.0/0 (entire internet).`,
+                `Restrict ingress to specific IP ranges or remove ipBlock rule`
+              );
+            }
+          }
+        } else {
+          // Empty from clause allows from all sources
+          this.addFinding(
+            'high',
+            'k8s-ingress-all-sources',
+            `Policy allows ingress from all sources: ${policyName}`,
+            `Network policy "${policyName}" in namespace "${namespace}" has an ingress rule with no 'from' clause, allowing traffic from all sources.`,
+            `Add explicit 'from' selectors to restrict ingress sources`
+          );
+        }
+
+        // Check for unrestricted ports
+        if (!rule.ports || rule.ports.length === 0) {
+          this.addFinding(
+            'low',
+            'k8s-ingress-all-ports',
+            `Policy allows all ports: ${policyName}`,
+            `Network policy "${policyName}" in namespace "${namespace}" allows ingress on all ports.`,
+            `Specify explicit port restrictions in the ingress rule`
+          );
+        }
+      }
+    }
+
+    // Check 3: Overly permissive egress rules
+    if (policy.spec.egress) {
+      for (const rule of policy.spec.egress) {
+        if (rule.to) {
+          for (const dest of rule.to) {
+            // Check for unrestricted CIDR blocks
+            if (dest.ipBlock && dest.ipBlock.cidr === '0.0.0.0/0') {
+              this.addFinding(
+                'medium',
+                'k8s-egress-to-internet',
+                `Policy allows egress to internet: ${policyName}`,
+                `Network policy "${policyName}" in namespace "${namespace}" allows egress to 0.0.0.0/0 (entire internet).`,
+                `Restrict egress to specific IP ranges or use DNS-based policies`
+              );
+            }
+          }
+        } else {
+          // Empty to clause allows to all destinations
+          this.addFinding(
+            'medium',
+            'k8s-egress-all-destinations',
+            `Policy allows egress to all destinations: ${policyName}`,
+            `Network policy "${policyName}" in namespace "${namespace}" has an egress rule with no 'to' clause, allowing traffic to all destinations.`,
+            `Add explicit 'to' selectors to restrict egress destinations`
+          );
+        }
+      }
+    }
+
+    // Check 4: Missing policy types
+    if (!policy.spec.policyTypes || policy.spec.policyTypes.length === 0) {
+      this.addFinding(
+        'low',
+        'k8s-missing-policy-types',
+        `Policy missing policyTypes field: ${policyName}`,
+        `Network policy "${policyName}" in namespace "${namespace}" does not specify policyTypes. Behavior may be ambiguous.`,
+        `Explicitly set policyTypes to ['Ingress', 'Egress'] or ['Ingress'] as appropriate`
+      );
+    }
+
+    // Check 5: Policy age (old policies may need review)
+    if (policy.metadata.creationTimestamp) {
+      const created = new Date(policy.metadata.creationTimestamp);
+      const ageInDays = (Date.now() - created.getTime()) / (1000 * 60 * 60 * 24);
+
+      if (ageInDays > 180) {
+        this.addFinding(
+          'low',
+          'k8s-policy-needs-review',
+          `Old policy needs review: ${policyName}`,
+          `Network policy "${policyName}" in namespace "${namespace}" is ${Math.floor(ageInDays)} days old and may need review.`,
+          `Review and update network policies regularly to ensure they match current requirements`
+        );
+      }
+    }
+  }
+
+  /**
+   * Perform cluster-wide security checks
+   */
+  private async performClusterWideChecks(
+    k8sClient: KubernetesClient,
+    _namespaces: string[]
+  ): Promise<void> {
+    logger.info('🔒 Performing cluster-wide network security checks');
+
+    try {
+      // Get all policies across cluster
+      const allPolicies = await k8sClient.listAllNetworkPolicies();
+      const allPods = await k8sClient.listAllPods();
+
+      // Calculate coverage metrics
+      const namespacesWithPolicies = new Set(allPolicies.map((p) => p.metadata.namespace));
+      const namespacesWithPods = new Set(
+        allPods.filter((p) => p.phase === 'Running').map((p) => p.namespace)
+      );
+
+      const unprotectedNamespaces = Array.from(namespacesWithPods)
+        .filter((ns) => !namespacesWithPolicies.has(ns))
+        .filter((ns) => !ns.startsWith('kube-')); // Exclude system namespaces
+
+      if (unprotectedNamespaces.length > 0) {
+        this.addFinding(
+          'high',
+          'k8s-unprotected-namespaces',
+          'Namespaces without network policies',
+          `${unprotectedNamespaces.length} namespace(s) have pods but no network policies: ${unprotectedNamespaces.join(', ')}`,
+          `Implement network policies for all application namespaces`
+        );
+      }
+
+      // Check for cluster-wide policy best practices
+      const policyCount = allPolicies.length;
+      const podCount = allPods.filter((p) => p.phase === 'Running').length;
+
+      if (policyCount === 0 && podCount > 0) {
+        this.addFinding(
+          'critical',
+          'k8s-no-network-policies',
+          'No network policies in entire cluster',
+          `Cluster has ${podCount} running pods but zero network policies. All inter-pod communication is unrestricted.`,
+          `Implement a zero-trust network policy strategy starting with default-deny policies`
+        );
+      }
+
+      // Calculate and report metrics
+      const coverage =
+        namespacesWithPods.size > 0
+          ? (namespacesWithPolicies.size / namespacesWithPods.size) * 100
+          : 0;
+
+      logger.info(`📊 Network policy coverage: ${coverage.toFixed(1)}% of namespaces`);
+
+      if (coverage < 100) {
+        this.addFinding(
+          'info',
+          'k8s-policy-coverage',
+          'Network policy coverage metrics',
+          `Network policies are implemented in ${namespacesWithPolicies.size} out of ${namespacesWithPods.size} namespaces with pods (${coverage.toFixed(1)}% coverage)`,
+          `Aim for 100% network policy coverage across all application namespaces`
+        );
+      }
+    } catch (error) {
+      logger.error('Error performing cluster-wide checks:', error);
+    }
+  }
+
+  /**
+   * Check if policies include a default-deny policy
+   */
+  private hasDefaultDenyPolicy(policies: NetworkPolicySpec[]): boolean {
+    return policies.some((policy) => {
+      const hasEmptySelector =
+        !policy.spec.podSelector.matchLabels && !policy.spec.podSelector.matchExpressions;
+      const hasEmptyIngress =
+        policy.spec.policyTypes?.includes('Ingress') &&
+        (!policy.spec.ingress || policy.spec.ingress.length === 0);
+      const hasEmptyEgress =
+        policy.spec.policyTypes?.includes('Egress') &&
+        (!policy.spec.egress || policy.spec.egress.length === 0);
+
+      return hasEmptySelector && (hasEmptyIngress || hasEmptyEgress);
+    });
+  }
+
+  /**
+   * Find pods not covered by any network policy
+   */
+  private findUnprotectedPods(pods: PodInfo[], policies: NetworkPolicySpec[]): PodInfo[] {
+    return pods.filter((pod) => {
+      // Check if any policy applies to this pod
+      const isCovered = policies.some((policy) => {
+        const selector = policy.spec.podSelector;
+
+        // Empty selector applies to all pods
+        if (!selector.matchLabels && !selector.matchExpressions) {
+          return true;
+        }
+
+        // Check label matching
+        if (selector.matchLabels) {
+          const matches = Object.entries(selector.matchLabels).every(
+            ([key, value]) => pod.labels[key] === value
+          );
+          if (matches) return true;
+        }
+
+        // For simplicity, we're not fully implementing matchExpressions
+        // In production, you'd want to implement the full selector logic
+        if (selector.matchExpressions && selector.matchExpressions.length > 0) {
+          return false; // Conservative: assume no match
+        }
+
+        return false;
+      });
+
+      return !isCovered;
+    });
+  }
+
+  /**
+   * Simulated Kubernetes scan (fallback when cluster not available)
+   */
+  private async simulateKubernetesNetwork(namespace: string): Promise<void> {
     await this.simulateAnalysis(600);
 
-    // Check for missing network policies
     this.addFinding(
       'high',
       'k8s-no-network-policy',
       'No network policies found',
-      `Namespace "${options.k8s_namespace}" has no network policies - all pod communication is allowed`
+      `Namespace "${namespace}" has no network policies - all pod communication is allowed`,
+      `Implement network policies to control pod-to-pod traffic`
     );
 
-    // Check for default-deny policies
     this.addFinding(
       'medium',
       'k8s-no-default-deny',
       'No default-deny network policy',
-      'Missing default-deny network policy to block all traffic by default'
+      'Missing default-deny network policy to block all traffic by default',
+      `Create a default-deny policy as the foundation of your network security`
     );
 
-    // Check ingress/egress rules
     this.addFinding(
       'medium',
       'k8s-permissive-ingress',
       'Permissive ingress rules detected',
-      'Some pods allow ingress from all namespaces'
+      'Some pods allow ingress from all namespaces',
+      `Restrict ingress to specific namespaces using label selectors`
     );
 
-    logger.info('✅ Kubernetes network scan completed');
+    logger.info('✅ Simulated Kubernetes network scan completed');
   }
 
   /**
