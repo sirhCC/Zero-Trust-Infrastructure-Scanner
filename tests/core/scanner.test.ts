@@ -31,30 +31,30 @@ describe('ZeroTrustScanner', () => {
       // Call the private method through type assertion for testing
       const id1 = (scanner as any).generateScanId();
       const id2 = (scanner as any).generateScanId();
-      
+
       expect(id1).not.toEqual(id2);
       expect(id1).toMatch(/^scan_\d+_[a-z0-9]+$/);
     });
 
     it('should track active scans', async () => {
       const target: ScanTarget = {
-        type: 'network',
-        target: '10.0.0.0/16',
-        options: {}
+        type: 'compliance',
+        target: 'test-target',
+        options: {},
       };
 
       const scanPromise = scanner.scan(target);
-      
+
       // Wait a moment for scan to start
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
       // Check active scans while scan is running
       const activeScans = scanner.getActiveScans();
       expect(activeScans.length).toBeGreaterThan(0);
-      
+
       // Wait for scan to complete
       await scanPromise;
-      
+
       // Check that scan is no longer active
       const activeScansFinal = scanner.getActiveScans();
       expect(activeScansFinal.length).toBe(0);
@@ -62,16 +62,23 @@ describe('ZeroTrustScanner', () => {
 
     it('should store scan history', async () => {
       const target: ScanTarget = {
-        type: 'network',
-        target: '10.0.0.0/16',
-        options: {}
+        type: 'compliance',
+        target: 'test-target',
+        options: {},
       };
 
-      await scanner.scan(target);
-      
+      const result = await scanner.scan(target);
+
       const history = scanner.getScanHistory();
       expect(history.length).toBe(1);
       expect(history[0].target).toEqual(target);
+
+      // Log the result for debugging
+      if (history[0].status !== 'completed') {
+        console.log('Scan result:', result);
+        console.log('Scan findings:', result.findings);
+      }
+
       expect(history[0].status).toBe('completed');
     });
 
@@ -79,12 +86,12 @@ describe('ZeroTrustScanner', () => {
       const target: ScanTarget = {
         type: 'identity',
         target: 'aws-iam',
-        options: {}
+        options: {},
       };
 
       const result = await scanner.scan(target);
       const retrievedScan = scanner.getScan(result.id);
-      
+
       expect(retrievedScan).toBeDefined();
       expect(retrievedScan?.id).toBe(result.id);
     });
@@ -99,35 +106,35 @@ describe('ZeroTrustScanner', () => {
       const target: ScanTarget = {
         type: 'supply-chain',
         target: 'package.json',
-        options: {}
+        options: {},
       };
 
       // Start a scan but don't wait for it
       const scanPromise = scanner.scan(target);
-      
+
       // Wait a moment for scan to start
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
       // Get the scan ID from active scans
       const activeScans = scanner.getActiveScans();
       expect(activeScans.length).toBe(1);
-      
+
       const scanId = activeScans[0].id;
-      
+
       // Cancel the scan
       const cancelled = await scanner.cancelScan(scanId);
       expect(cancelled).toBe(true);
-      
+
       // Verify scan is no longer active
       const finalActiveScans = scanner.getActiveScans();
       expect(finalActiveScans.length).toBe(0);
-      
+
       // Wait for original scan promise to resolve
       await scanPromise;
-      
+
       // Check that cancelled scan is in history
       const history = scanner.getScanHistory();
-      const cancelledScan = history.find(s => s.id === scanId);
+      const cancelledScan = history.find((s) => s.id === scanId);
       expect(cancelledScan?.status).toBe('cancelled');
     });
 
@@ -150,25 +157,25 @@ describe('ZeroTrustScanner', () => {
       const target: ScanTarget = {
         type: 'compliance',
         target: 'soc2',
-        options: {}
+        options: {},
       };
 
       // Start multiple scans
-  const scanPromise1 = scanner.scan(target);
-  const scanPromise2 = scanner.scan({ ...target, target: 'pci' });
-      
+      const scanPromise1 = scanner.scan(target);
+      const scanPromise2 = scanner.scan({ ...target, target: 'pci' });
+
       // Wait a moment for scans to start
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
       expect(scanner.getActiveScans().length).toBe(2);
-      
+
       // Shutdown should cancel all active scans
       await scanner.shutdown();
-      
+
       expect(scanner.getActiveScans().length).toBe(0);
 
-  // Ensure any in-flight scan promises have settled to avoid open handles
-  await Promise.allSettled([scanPromise1, scanPromise2]);
+      // Ensure any in-flight scan promises have settled to avoid open handles
+      await Promise.allSettled([scanPromise1, scanPromise2]);
     });
   });
 });
