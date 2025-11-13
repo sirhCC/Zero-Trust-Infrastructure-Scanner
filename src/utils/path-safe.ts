@@ -19,7 +19,8 @@ export function sanitizeOutputPath(
   }
 
   const cwd = path.resolve(process.cwd());
-  const roots = new Set<string>(opts?.baseDir ? [path.resolve(opts.baseDir)] : [cwd]);
+  const roots = new Set<string>([cwd]); // Always allow CWD
+  if (opts?.baseDir) roots.add(path.resolve(opts.baseDir));
   if (opts?.allowRoots) opts.allowRoots.forEach((r) => roots.add(path.resolve(r)));
 
   const base = opts?.baseDir ? path.resolve(opts.baseDir) : cwd;

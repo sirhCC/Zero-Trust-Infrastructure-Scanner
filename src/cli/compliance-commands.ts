@@ -14,7 +14,10 @@ export const registerComplianceCommands: RegisterCommands = (program: Command) =
     .option('--exclude-controls <controls>', 'Comma-separated list of controls to exclude')
     .option('--report-format <format>', 'Report format (pdf|html|json)', 'html')
     .option('--out-file <file>', 'Write command output to file (respects --output)')
-    .option('--fail-on <severity>', 'Exit non-zero if findings at/above severity exist (low|medium|high|critical)')
+    .option(
+      '--fail-on <severity>',
+      'Exit non-zero if findings at/above severity exist (low|medium|high|critical)'
+    )
     .action(async (options, cmd) => {
       try {
         const { ConfigManager } = await import('../config/config-manager');
@@ -44,8 +47,8 @@ export const registerComplianceCommands: RegisterCommands = (program: Command) =
             report_format: (options.reportFormat as 'json' | 'html' | 'pdf' | 'csv') || 'json',
             include_recommendations: true,
             severity_threshold: 'medium' as const,
-            custom_rules: []
-          }
+            custom_rules: [],
+          },
         };
 
         const timeoutMsArg = rootOpts.timeout ? parseInt(rootOpts.timeout) : undefined;
@@ -58,7 +61,8 @@ export const registerComplianceCommands: RegisterCommands = (program: Command) =
         const result = await scanner.scan(target, scanOpts);
 
         if (rootOpts.output && rootOpts.output !== 'table') {
-          const payload = rootOpts.output === 'yaml' ? YAML.stringify(result) : JSON.stringify(result, null, 2);
+          const payload =
+            rootOpts.output === 'yaml' ? YAML.stringify(result) : JSON.stringify(result, null, 2);
           if (options.outFile) {
             const dir = path.dirname(options.outFile);
             if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -76,11 +80,11 @@ export const registerComplianceCommands: RegisterCommands = (program: Command) =
         if (rootOpts.output === 'table' && result.findings.length > 0) {
           console.log('\n' + chalk.bold('Compliance Findings:'));
           const findingsBySeverity = {
-            critical: result.findings.filter(f => f.severity === 'critical'),
-            high: result.findings.filter(f => f.severity === 'high'),
-            medium: result.findings.filter(f => f.severity === 'medium'),
-            low: result.findings.filter(f => f.severity === 'low'),
-            info: result.findings.filter(f => f.severity === 'info')
+            critical: result.findings.filter((f) => f.severity === 'critical'),
+            high: result.findings.filter((f) => f.severity === 'high'),
+            medium: result.findings.filter((f) => f.severity === 'medium'),
+            low: result.findings.filter((f) => f.severity === 'low'),
+            info: result.findings.filter((f) => f.severity === 'info'),
           };
           Object.entries(findingsBySeverity).forEach(([severity, findings]) => {
             if (findings.length > 0) {
@@ -89,7 +93,7 @@ export const registerComplianceCommands: RegisterCommands = (program: Command) =
                 high: chalk.redBright,
                 medium: chalk.yellow,
                 low: chalk.blue,
-                info: chalk.gray
+                info: chalk.gray,
               }[severity as keyof typeof findingsBySeverity];
               console.log(`\n${severityColor(`${severity.toUpperCase()} (${findings.length})`)}`);
               findings.forEach((finding, index) => {
@@ -99,8 +103,10 @@ export const registerComplianceCommands: RegisterCommands = (program: Command) =
                   console.log(`   💡 ${chalk.cyan('Recommendation:')} ${finding.recommendation}`);
                 }
                 if (finding.compliance_impact && finding.compliance_impact.length > 0) {
-                  finding.compliance_impact.forEach(impact => {
-                    console.log(`   📋 ${chalk.magenta(impact.standard)} Control: ${impact.control} (${impact.impact} impact)`);
+                  finding.compliance_impact.forEach((impact) => {
+                    console.log(
+                      `   📋 ${chalk.magenta(impact.standard)} Control: ${impact.control} (${impact.impact} impact)`
+                    );
                   });
                 }
                 console.log('');
@@ -117,12 +123,19 @@ export const registerComplianceCommands: RegisterCommands = (program: Command) =
           console.log(`   ${chalk.blue('Low:')} ${findingsBySeverity.low.length}`);
           const totalChecks = result.metrics.total_checks || 25;
           const failedChecks = totalIssues;
-          const complianceScore = Math.max(0, Math.round(((totalChecks - failedChecks) / totalChecks) * 100));
+          const complianceScore = Math.max(
+            0,
+            Math.round(((totalChecks - failedChecks) / totalChecks) * 100)
+          );
           console.log(`\n📈 ${chalk.bold('Compliance Score:')} ${complianceScore}%`);
           if (criticalCount > 0) {
-            console.log(chalk.red('\n🚨 CRITICAL compliance issues found - immediate remediation required!'));
+            console.log(
+              chalk.red('\n🚨 CRITICAL compliance issues found - immediate remediation required!')
+            );
           } else if (highCount > 0) {
-            console.log(chalk.yellow('\n⚠️  HIGH severity compliance issues found - prioritize remediation'));
+            console.log(
+              chalk.yellow('\n⚠️  HIGH severity compliance issues found - prioritize remediation')
+            );
           } else {
             console.log(chalk.green('\n✅ No critical compliance issues found'));
           }
@@ -135,8 +148,13 @@ export const registerComplianceCommands: RegisterCommands = (program: Command) =
           process.exit(1);
         }
 
+        // Explicit success exit
+        process.exit(0);
       } catch (error) {
-        console.error(chalk.red('❌ Compliance scan failed:'), error instanceof Error ? error.message : error);
+        console.error(
+          chalk.red('❌ Compliance scan failed:'),
+          error instanceof Error ? error.message : error
+        );
         process.exit(1);
       }
     });

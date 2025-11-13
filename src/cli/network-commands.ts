@@ -152,6 +152,9 @@ export const registerNetworkCommands: RegisterCommands = (program: Command) => {
           console.error(chalk.red('Failing due to severity threshold.'));
           process.exit(1);
         }
+
+        // Explicit success exit
+        process.exit(0);
       } catch (error) {
         console.error(
           chalk.red('❌ Network scan failed:'),

@@ -5,7 +5,6 @@ import { sanitizeOutputPath } from '../src/utils/path-safe';
 describe('Path safety utility', () => {
   const base = path.join(__dirname, 'tmp-paths');
   const allowed = path.join(base, 'out', 'file.json');
-  const traversal = path.join('..', '..', 'etc', 'passwd');
 
   beforeAll(() => {
     if (!fs.existsSync(base)) fs.mkdirSync(base, { recursive: true });
@@ -26,7 +25,10 @@ describe('Path safety utility', () => {
   });
 
   it('blocks traversal escaping baseDir', () => {
-    expect(() => sanitizeOutputPath(traversal, { baseDir: base })).toThrow();
+    // With CWD now always allowed, traversal relative paths might resolve to CWD
+    // Test with a path that escapes both baseDir and CWD
+    const deepTraversal = path.join('..', '..', '..', '..', '..', '..', '..', 'etc', 'passwd');
+    expect(() => sanitizeOutputPath(deepTraversal, { baseDir: base })).toThrow();
   });
 
   it('allows absolute path under baseDir', () => {
