@@ -12,7 +12,12 @@
     "excludedNetworks": [],
     "portScanEnabled": true,
     "serviceScanEnabled": true,
-    "cloudProviders": []
+    "cloudProviders": [],
+    "kubernetes": {
+      "enabled": true,
+      "excludeSystemNamespaces": true,
+      "namespaces": []
+    }
   },
   "identity": {
     "providers": [],

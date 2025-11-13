@@ -42,6 +42,24 @@
             },
             "required": ["name"]
           }
+        },
+        "kubernetes": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "kubeConfigPath": { "type": "string" },
+            "context": { "type": "string" },
+            "namespaces": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "List of namespaces to scan, use ['all'] or ['*'] for all namespaces"
+            },
+            "excludeSystemNamespaces": {
+              "type": "boolean",
+              "description": "Exclude kube-system and other system namespaces"
+            }
+          }
         }
       },
       "required": []
